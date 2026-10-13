@@ -1,0 +1,28 @@
+The company gym is located on the 3rd floor and is open 24/7 for all employees.
+
+For security reasons, the server room access code is 4829 and must never be shared
+outside the engineering team.
+
+Pets are allowed in the office only on Fridays, and must remain on a leash in common areas.
+
+Expense reports must be submitted by the last day of each calendar month through the
+internal finance portal. Late submissions require manager approval.
+
+The MERN stack consists of MongoDB, Express, React, and Node.js, and is commonly used
+to build full-stack JavaScript web applications.
+
+Retrieval-Augmented Generation (RAG) is a technique where a language model's response
+is grounded in external documents retrieved from a knowledge base, rather than relying
+purely on what the model memorized during training.
+
+LangChain.js is a JavaScript/TypeScript framework that provides building blocks for
+working with LLMs, including document loaders, text splitters, embeddings, vector
+stores, and chains that combine these pieces together.
+
+Ollama lets developers run open-source large language models locally on their own
+machine. It exposes a local HTTP API on port 11434 that tools like LangChain.js can
+call directly, without needing any cloud API key.
+
+A vector store holds embeddings — numerical representations of text — and supports
+similarity search, so a system can find which stored documents are most semantically
+relevant to a new query.
