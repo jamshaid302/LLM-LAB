@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+build/
+.vite/
+
+# Environment — never commit real keys
+.env
+.env.local
+.env.*.local
+
+# Local model / vector store data
+.chroma/
+chroma-data/
+*.sqlite3
+
+# Evaluation run artifacts (keep committed baselines, ignore scratch runs)
+**/eval-runs/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Python (used from the fine-tuning project onward)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.ipynb_checkpoints/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
