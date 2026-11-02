@@ -309,8 +309,10 @@ is the gym?" comes from `knowledge.txt` when nobody has said it yet.
 
 A vector search is the wrong tool for "message 1, then 2, then 3." Putting chat text
 into the same Chroma collection as the knowledge base would let an old reply compete
-with the gym chunk. The last 12 messages are sent. Summarizing the older half is still
-open. There is one stand-in user, `local`, until auth exists.
+with the gym chunk. The last 12 messages are sent in full. Older ones are summarized
+into one paragraph, and that paragraph is what later prompts see for the early turns.
+The summary is its own model call, so it costs tokens, and it can drop a detail. The
+original messages stay in MongoDB. There is one stand-in user, `local`, until auth exists.
 
 ---
 
@@ -463,5 +465,6 @@ retries once with the validation error, and returns 422 with no object if both t
 fail. The cutoff, the golden set, and a Chroma store are already in place. A restart
 loads the chunks instead of embedding them again. Answers arrive token by token, and
 Stop aborts the model call. Threads and messages live in MongoDB, and the recent turns
-go into the next prompt along with any matching knowledge-base chunk. Next I would
-summarize a thread once it no longer fits the context window."
+go into the next prompt along with any matching knowledge-base chunk. When the thread
+grows past that window, the older turns are summarized and the summary is what the
+model sees for them."

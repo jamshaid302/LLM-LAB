@@ -48,7 +48,8 @@ New chat
 
 Send
    → save the user message
-   → copy the last 12 messages out of MongoDB
+   → if the thread is longer than the last 12 messages, summarize the older ones
+   → copy the summary plus the recent messages into the prompt
    → retrieve chunks from the RAG store and drop any below the cutoff
    → prompt                  system text + transcript + any documents
    → Ollama stream           token events over SSE
@@ -58,8 +59,11 @@ Send
 The first user message replaces the title "New chat". A refresh calls `GET /threads`
 and `GET /threads/:id/messages`, so the page is rebuilt from MongoDB.
 
-Only the last 12 messages are copied into the prompt. Older messages stay stored.
-Summarizing them is not built yet.
+Only the last 12 messages are copied in full. When a thread grows past that, the older
+messages are sent to the model once, and the paragraph it writes is saved on the thread
+as `summary`. The next prompt gets that paragraph plus the recent turns. The original
+messages stay in the `messages` collection. A later overflow summarizes the new older
+turns together with the previous summary, so the early facts are not folded twice.
 
 ## How we implemented it
 
@@ -93,8 +97,8 @@ collection keep order and let a thread be listed without loading every token.
 **History is replayed as messages, not as a retrieved chunk.** The model sees the
 actual user and assistant turns. Documents are a separate system section.
 
-**The last 12 messages, not the whole thread.** That is a hard trim, not a summary.
-`CONVERSATION_HISTORY_LIMIT` changes the number.
+**A summary, then the last 12 messages.** The summary is one extra model call, so it
+costs tokens. `CONVERSATION_HISTORY_LIMIT` changes how many raw messages stay beside it.
 
 ## API
 
@@ -103,8 +107,9 @@ actual user and assistant turns. Documents are a separate system section.
 
 `GET /api/conversations/threads` returns `{ "threads": [ ... ] }`, newest first.
 
-`GET /api/conversations/threads/:id/messages` returns `{ "messages": [ ... ] }` in
-time order. An unknown id is 404.
+`GET /api/conversations/threads/:id/messages` returns the full transcript plus
+`summary` and `summarizedCount`, in time order. The summary is empty until the thread
+outgrows the limit. An unknown id is 404.
 
 `POST /api/conversations/threads/:id/stream`
 
@@ -112,9 +117,9 @@ time order. An unknown id is 404.
 { "message": "My name is Sam." }
 ```
 
-The response is Server-Sent Events: `meta` (any knowledge-base chunks that cleared the
-cutoff), then `token`, then `done`. A missing message is JSON 400 before the stream
-opens.
+The response is Server-Sent Events: `meta` (the summary, if one exists, and any
+knowledge-base chunks that cleared the cutoff), then `token`, then `done`. A missing
+message is JSON 400 before the stream opens.
 
 ## Test plan
 
@@ -130,7 +135,7 @@ None of these need MongoDB or Ollama.
 
 | File                                                | What it checks                                                                                                                                                                                                                                                           |
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `tests/modules/conversations/conversations.test.js` | The history window starts on a user message. The prompt contains both the saved transcript and a retrieved chunk. A second reply is prompted with the first saved answer. A stopped stream saves the partial text. An unknown thread is 404 and an empty message is 400. |
+| `tests/modules/conversations/conversations.test.js` | The history window starts on a user message. The prompt contains both the saved transcript and a retrieved chunk. A second reply is prompted with the first saved answer. Past the limit, older messages are summarized once and left out of the next transcript. A later overflow folds new turns into the existing summary and does not repeat the original lines. A stopped stream saves the partial text. An unknown thread is 404 and an empty message is 400. |
 
 ### Manual tests
 
@@ -147,6 +152,7 @@ Start the API and the frontend. Open **Conversations**.
 | Click **New chat**, send "My name is Sam." | A reply streams in. The thread title becomes that sentence                       |
 | Send "What is my name?"                    | The reply uses Sam. No document is required                                      |
 | Send "Where is the company gym?"           | The reply says 3rd floor, and a `knowledge.txt` source is listed                 |
+| Set `CONVERSATION_HISTORY_LIMIT=2`, restart, and send a third message | A card titled **Earlier messages summarized** appears. The first messages are still listed. A question about the first fact still works |
 | Refresh the page                           | The same thread and both answers are still there                                 |
 | Press **Stop** during a long reply         | The partial text stays, with a Stopped line, and it is still there after refresh |
 | Stop the API and start it again            | The log says `connected, N threads`. The chat is still there                     |
@@ -154,8 +160,9 @@ Start the API and the frontend. Open **Conversations**.
 ## Known limitations
 
 - **One local user.** Every thread belongs to `userId: "local"`. There is no login.
-- **Old turns are stored and then ignored.** Past the last 12 messages, nothing is
-  summarized. The model simply does not see them.
+- **The summary can drop a detail.** It is a model paragraph, not a lossless copy. The
+  full messages are still in MongoDB if you need to check. `llama3.2:1b` often drops
+  the fact or adds one that was never said. A larger local model keeps it.
 - **Saved chats are not embedded.** You cannot yet search old threads by meaning.
   MongoDB is the transcript. A separate Chroma collection could index it later.
 - **The RAG and Streaming Chat pages do not write threads.** Persistence lives on
@@ -163,7 +170,8 @@ Start the API and the frontend. Open **Conversations**.
 
 ## Experiments
 
-1. Set `CONVERSATION_HISTORY_LIMIT=2` in `backend/.env`, restart, and have a four-message
-   chat. The model should lose the first fact.
+1. Set `CONVERSATION_HISTORY_LIMIT=2` in `backend/.env`, restart, and send three messages.
+   The summary card should appear, and a question about the first message should still
+   have an answer. Put the limit back to 12 afterward.
 2. Ask for something neither the transcript nor `knowledge.txt` contains. The reply
    should say it does not know.

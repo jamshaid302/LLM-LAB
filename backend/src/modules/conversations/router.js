@@ -23,7 +23,7 @@ export function createConversationsRouter(service) {
   router.get(
     "/threads/:id/messages",
     asyncHandler(async (req, res) => {
-      res.json({ messages: await service.listMessages(req.params.id) });
+      res.json(await service.listMessages(req.params.id));
     }),
   );
 

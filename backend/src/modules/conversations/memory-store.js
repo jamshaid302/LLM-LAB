@@ -12,7 +12,15 @@ export function createMemoryConversationStore() {
   return {
     async createThread({ userId, title = "New chat" }) {
       const now = new Date().toISOString();
-      const thread = { id: nextId("thread"), userId, title, createdAt: now, updatedAt: now };
+      const thread = {
+        id: nextId("thread"),
+        userId,
+        title,
+        summary: "",
+        summarizedCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      };
       threads.push(thread);
       return thread;
     },
@@ -40,6 +48,15 @@ export function createMemoryConversationStore() {
         thread.title = content.slice(0, 48);
       }
       return { ...message };
+    },
+
+    async updateSummary(threadId, { summary, summarizedCount }) {
+      const thread = threads.find((item) => item.id === threadId);
+      if (!thread) return null;
+      thread.summary = summary;
+      thread.summarizedCount = summarizedCount;
+      thread.updatedAt = new Date().toISOString();
+      return { ...thread };
     },
 
     async listMessages(threadId) {

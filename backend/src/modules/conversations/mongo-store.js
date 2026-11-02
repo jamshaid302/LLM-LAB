@@ -14,8 +14,23 @@ export function createMongoConversationStore(db) {
 
     async createThread({ userId, title = "New chat" }) {
       const now = new Date();
-      const result = await threads.insertOne({ userId, title, createdAt: now, updatedAt: now });
-      return presentThread({ _id: result.insertedId, userId, title, createdAt: now, updatedAt: now });
+      const result = await threads.insertOne({
+        userId,
+        title,
+        summary: "",
+        summarizedCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      });
+      return presentThread({
+        _id: result.insertedId,
+        userId,
+        title,
+        summary: "",
+        summarizedCount: 0,
+        createdAt: now,
+        updatedAt: now,
+      });
     },
 
     async listThreads(userId) {
@@ -53,6 +68,18 @@ export function createMongoConversationStore(db) {
       };
     },
 
+    async updateSummary(threadId, { summary, summarizedCount }) {
+      const _id = asObjectId(threadId);
+      if (!_id) return null;
+      const now = new Date();
+      const updated = await threads.findOneAndUpdate(
+        { _id },
+        { $set: { summary, summarizedCount, updatedAt: now } },
+        { returnDocument: "after" },
+      );
+      return updated ? presentThread(updated) : null;
+    },
+
     async listMessages(threadId) {
       const docs = await messages.find({ threadId }).sort({ createdAt: 1, _id: 1 }).toArray();
       return docs.map((doc) => ({
@@ -86,6 +113,8 @@ function presentThread(doc) {
     id: doc._id.toString(),
     userId: doc.userId,
     title: doc.title,
+    summary: doc.summary ?? "",
+    summarizedCount: doc.summarizedCount ?? 0,
     createdAt: doc.createdAt.toISOString(),
     updatedAt: doc.updatedAt.toISOString(),
   };

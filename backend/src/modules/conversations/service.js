@@ -1,9 +1,9 @@
 import { config } from "../../core/config.js";
 import { HttpError } from "../../core/http.js";
-import { streamOllamaChat } from "../../core/ollama-stream.js";
+import { completeOllamaChat, streamOllamaChat } from "../../core/ollama-stream.js";
 import { formatSse, isAbortError } from "../../core/sse.js";
 
-import { buildConversationMessages, recentTurns } from "./prompt.js";
+import { buildConversationMessages, buildSummaryMessages, chooseFold } from "./prompt.js";
 
 const MAX_MESSAGE = 4000;
 
@@ -15,6 +15,12 @@ export function createConversationService({
       baseUrl: config.ollama.baseUrl,
       model: config.ollama.chatModel,
       ...args,
+    }),
+  completeChat = (messages) =>
+    completeOllamaChat({
+      baseUrl: config.ollama.baseUrl,
+      model: config.ollama.chatModel,
+      messages,
     }),
   retrieveContext = async () => [],
   userId = config.conversations.userId,
@@ -39,7 +45,11 @@ export function createConversationService({
   async function listMessages(threadId) {
     const thread = await requireStore().getThread(threadId);
     if (!thread || thread.userId !== userId) throw new HttpError(404, "Thread not found");
-    return requireStore().listMessages(threadId);
+    return {
+      messages: await requireStore().listMessages(threadId),
+      summary: thread.summary ?? "",
+      summarizedCount: thread.summarizedCount ?? 0,
+    };
   }
 
   async function streamReply({ threadId, message, signal, write }) {
@@ -54,12 +64,18 @@ export function createConversationService({
     if (!thread || thread.userId !== userId) throw new HttpError(404, "Thread not found");
 
     await db.addMessage({ threadId, role: "user", content: text });
-    const history = recentTurns(await db.listMessages(threadId), historyLimit);
+    const history = await prepareHistory({ db, thread, threadId });
     const docs = await retrieveContext(text);
-    const prompt = buildConversationMessages({ history, docs });
+    const prompt = buildConversationMessages({
+      history: history.recent,
+      docs,
+      summary: history.summary,
+    });
 
     write(
       formatSse("meta", {
+        summary: history.summary,
+        summarizedCount: history.summarizedCount,
         sources: (docs ?? []).map((doc) => ({
           text: doc.text,
           source: doc.source,
@@ -88,6 +104,32 @@ export function createConversationService({
       await db.addMessage({ threadId, role: "assistant", content: answer, stopped });
     }
     write(formatSse("done", { finish: stopped ? "stopped" : "stop" }));
+  }
+
+  async function prepareHistory({ db, thread, threadId }) {
+    const messages = await db.listMessages(threadId);
+    const fold = chooseFold({
+      messages,
+      summarizedCount: thread.summarizedCount ?? 0,
+      limit: historyLimit,
+    });
+
+    if (fold.toFold.length === 0) {
+      return {
+        recent: fold.recent,
+        summary: thread.summary ?? "",
+        summarizedCount: thread.summarizedCount ?? 0,
+      };
+    }
+
+    const summary = (await completeChat(buildSummaryMessages({
+      previousSummary: thread.summary ?? "",
+      messages: fold.toFold,
+    }))).trim();
+    if (!summary) throw new Error("The conversation summary came back empty");
+
+    await db.updateSummary(threadId, { summary, summarizedCount: fold.summarizedCount });
+    return { recent: fold.recent, summary, summarizedCount: fold.summarizedCount };
   }
 
   return { createThread, listThreads, listMessages, streamReply };

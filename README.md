@@ -238,12 +238,12 @@ is the plain demo. The RAG page uses the same mechanism.
 Done after that: threads and messages in MongoDB. A reply is saved, and the recent
 turns are copied into the next prompt. If Chroma also finds a matching chunk, that
 chunk is added to the same prompt. One local user id, `local`, stands in until real
-auth. The last 12 messages are sent. Older ones are left in MongoDB and are not
-summarized yet.
+auth. Past 12 messages, the older turns are summarized in one model call. The summary
+is saved on the thread and sent with the recent messages. The original messages stay
+in MongoDB.
 
 Still to come:
 
-- Summarizing the older half of a long thread so it still fits the context window.
 - A real user concept, hardened into auth in Milestone 6.
 
 ### Milestone 4 — Providers and cost · planned

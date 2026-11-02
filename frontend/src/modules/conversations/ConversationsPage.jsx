@@ -6,6 +6,7 @@ export default function ConversationsPage() {
   const [threads, setThreads] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const [messages, setMessages] = useState([]);
+  const [summary, setSummary] = useState("");
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -26,6 +27,7 @@ export default function ConversationsPage() {
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     setMessages(data.messages);
+    setSummary(data.summary || "");
   }
 
   useEffect(() => {
@@ -49,6 +51,7 @@ export default function ConversationsPage() {
     setThreads((prev) => [data, ...prev]);
     setActiveId(data.id);
     setMessages([]);
+    setSummary("");
   }
 
   function patchLast(patch) {
@@ -90,7 +93,10 @@ export default function ConversationsPage() {
       }
 
       await readSse(res, (event, data) => {
-        if (event === "meta") patchLast(() => ({ sources: data.sources }));
+        if (event === "meta") {
+          if (data.summary) setSummary(data.summary);
+          patchLast(() => ({ sources: data.sources }));
+        }
         if (event === "token") patchLast((last) => ({ content: last.content + data.text }));
         if (event === "done" && data.finish === "stopped") patchLast(() => ({ stopped: true }));
         if (event === "error") patchLast((last) => ({ content: last.content || `Error: ${data.error}` }));
@@ -136,6 +142,12 @@ export default function ConversationsPage() {
       </div>
       {error && <p style={styles.error}>{error}</p>}
       <div style={styles.chatBox}>
+        {summary && (
+          <div style={styles.summary}>
+            <div style={styles.summaryLabel}>Earlier messages summarized</div>
+            {summary}
+          </div>
+        )}
         {messages.length === 0 && (
           <p style={styles.placeholder}>
             {activeId
@@ -212,6 +224,15 @@ const styles = {
     background: "#1e293b",
   },
   placeholder: { color: "#64748b" },
+  summary: {
+    border: "1px solid #334155",
+    borderRadius: 6,
+    padding: 10,
+    marginBottom: 14,
+    color: "#cbd5e1",
+    fontSize: "0.85rem",
+  },
+  summaryLabel: { color: "#94a3b8", fontSize: "0.75rem", marginBottom: 4 },
   msg: { marginBottom: 14, lineHeight: 1.4, whiteSpace: "pre-wrap" },
   userLabel: { color: "#38bdf8", fontWeight: 600 },
   botLabel: { color: "#e2e8f0", fontWeight: 600 },

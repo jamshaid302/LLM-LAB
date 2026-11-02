@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "../../../src/app.js";
 import { createConversationsModule } from "../../../src/modules/conversations/index.js";
 import { createMemoryConversationStore } from "../../../src/modules/conversations/memory-store.js";
-import { buildConversationMessages, recentTurns } from "../../../src/modules/conversations/prompt.js";
+import { buildConversationMessages, chooseFold, recentTurns } from "../../../src/modules/conversations/prompt.js";
 import { createConversationService } from "../../../src/modules/conversations/service.js";
 
 describe("conversation prompt", () => {
@@ -33,6 +33,27 @@ describe("conversation prompt", () => {
     expect(messages[0].content).toContain("3rd floor");
     expect(messages.map((message) => message.content)).toContain("My name is Sam.");
     expect(messages.at(-1).content).toBe("Where is the gym?");
+  });
+
+  it("includes a saved summary and leaves folded messages out of the transcript", () => {
+    const messages = buildConversationMessages({
+      history: [{ role: "user", content: "What is my name?" }],
+      summary: "The user's name is Sam.",
+    });
+    expect(messages[0].content).toContain("The user's name is Sam.");
+    expect(messages.map((message) => message.content)).not.toContain("My name is Sam.");
+  });
+
+  it("folds the older half once the pending messages pass the limit", () => {
+    const messages = [
+      { role: "user", content: "one" },
+      { role: "assistant", content: "two" },
+      { role: "user", content: "three" },
+    ];
+    const fold = chooseFold({ messages, summarizedCount: 0, limit: 2 });
+    expect(fold.toFold.map((message) => message.content)).toEqual(["one", "two"]);
+    expect(fold.recent.map((message) => message.content)).toEqual(["three"]);
+    expect(fold.summarizedCount).toBe(2);
   });
 });
 
@@ -63,8 +84,9 @@ describe("conversation service", () => {
     });
 
     const saved = await service.listMessages(thread.id);
-    expect(saved.map((message) => message.role)).toEqual(["user", "assistant", "user", "assistant"]);
-    expect(saved[1].content).toBe("Noted.");
+    expect(saved.messages.map((message) => message.role)).toEqual(["user", "assistant", "user", "assistant"]);
+    expect(saved.messages[1].content).toBe("Noted.");
+    expect(saved.summary).toBe("");
     expect(seen[1].map((message) => message.content)).toContain("My name is Sam.");
     expect(seen[1].map((message) => message.content)).toContain("Noted.");
     expect(seen[1][0].content).toContain("knowledge.txt");
@@ -94,7 +116,46 @@ describe("conversation service", () => {
     });
 
     const saved = await service.listMessages(thread.id);
-    expect(saved[1]).toMatchObject({ role: "assistant", content: "partial", stopped: true });
+    expect(saved.messages[1]).toMatchObject({ role: "assistant", content: "partial", stopped: true });
+  });
+
+  it("summarizes messages that no longer fit and does not summarize them again", async () => {
+    const store = createMemoryConversationStore();
+    const summarized = [];
+    const seen = [];
+    const service = createConversationService({
+      store,
+      historyLimit: 2,
+      retrieveContext: async () => [],
+      completeChat: async (messages) => {
+        summarized.push(messages.at(-1).content);
+        return "The user's name is Sam.";
+      },
+      streamChat: async ({ messages, onToken }) => {
+        seen.push(messages);
+        onToken("ok");
+      },
+    });
+
+    const thread = await service.createThread();
+    await service.streamReply({ threadId: thread.id, message: "My name is Sam.", write: () => {} });
+    await service.streamReply({ threadId: thread.id, message: "What is my name?", write: () => {} });
+
+    expect(summarized).toHaveLength(1);
+    expect(summarized[0]).toContain("My name is Sam.");
+    expect(seen.at(-1)[0].content).toContain("The user's name is Sam.");
+    expect(seen.at(-1).map((message) => message.content)).not.toContain("My name is Sam.");
+
+    await service.streamReply({ threadId: thread.id, message: "Thanks.", write: () => {} });
+    expect(summarized).toHaveLength(2);
+    expect(summarized[1]).toContain("Summary so far:");
+    expect(summarized[1]).toContain("The user's name is Sam.");
+    expect(summarized[1]).not.toContain("User: My name is Sam.");
+
+    const saved = await service.listMessages(thread.id);
+    expect(saved.messages).toHaveLength(6);
+    expect(saved.summary).toBe("The user's name is Sam.");
+    expect(saved.summarizedCount).toBeGreaterThan(0);
   });
 });
 

@@ -19,6 +19,35 @@ export function tokenFromOllamaLine(line) {
   };
 }
 
+/** One non-streaming reply. Used for the conversation summary, which is itself a model call. */
+export async function completeOllamaChat({
+  fetchImpl = fetch,
+  baseUrl = config.ollama.baseUrl,
+  model = config.ollama.chatModel,
+  messages,
+  signal,
+} = {}) {
+  let response;
+  try {
+    response = await fetchImpl(`${baseUrl}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model, messages, stream: false }),
+      signal,
+    });
+  } catch (cause) {
+    if (cause?.name === "AbortError") throw cause;
+    throw new Error(`Cannot reach Ollama at ${baseUrl} (${cause.message})`);
+  }
+
+  if (!response.ok) {
+    throw new Error(`Ollama chat failed: HTTP ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data.message?.content ?? "";
+}
+
 /**
  * Read Ollama's token stream and call onToken for each piece of text.
  * `fetchImpl` is injectable so tests never open a network connection.
