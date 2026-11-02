@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import fs from "node:fs/promises";
 import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
@@ -97,6 +99,39 @@ describe("createRagService", () => {
     for (const source of result.droppedSources) {
       expect(Number(source.score)).toBeLessThan(0.8);
     }
+  });
+
+  it("loads a matching chroma corpus without embedding again", async () => {
+    const raw = await fs.readFile(DEFAULT_CORPUS, "utf-8");
+    const corpusHash = createHash("sha256").update(raw).digest("hex");
+    const store = {
+      kind: "chroma",
+      status: vi.fn(async () => ({ count: 6, corpusHash, space: "cosine" })),
+      replace: vi.fn(),
+      search: vi.fn(async () => []),
+    };
+    const rag = makeService({ store });
+
+    const loaded = await rag.load();
+
+    expect(loaded).toEqual({ chunks: 6, embedded: false, store: "chroma" });
+    expect(store.replace).not.toHaveBeenCalled();
+    expect(rag.chunkCount).toBe(6);
+  });
+
+  it("re-embeds when the stored corpus hash does not match", async () => {
+    const store = {
+      kind: "chroma",
+      status: vi.fn(async () => ({ count: 6, corpusHash: "stale", space: "cosine" })),
+      replace: vi.fn(async () => {}),
+      search: vi.fn(async () => []),
+    };
+    const rag = makeService({ store });
+
+    const loaded = await rag.load();
+
+    expect(loaded.embedded).toBe(true);
+    expect(store.replace).toHaveBeenCalledOnce();
   });
 
   it("fails clearly when the corpus file is missing", async () => {

@@ -5,7 +5,15 @@ export default function RagPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState(null);
+  const [storeName, setStoreName] = useState("");
   const chatEndRef = useRef(null);
+
+  useEffect(() => {
+    fetch("/api/health")
+      .then((res) => res.json())
+      .then((data) => setStoreName(data.modules?.rag?.store ?? ""))
+      .catch(() => setStoreName(""));
+  }, []);
 
   useEffect(() => {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -81,6 +89,7 @@ export default function RagPage() {
 
   return (
     <div style={styles.page}>
+      {storeName && <p style={styles.report}>Vector store: {storeName}</p>}
       <div style={styles.actions}>
         <button onClick={handleReingest} disabled={loading} style={styles.reingestBtn}>
           Re-ingest docs

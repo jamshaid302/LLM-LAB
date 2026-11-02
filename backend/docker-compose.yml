@@ -1,0 +1,18 @@
+# Persistent vector database for the RAG module.
+# From backend/: docker compose up -d
+# The in-memory store is still in src/modules/rag/store.js (RAG_STORE=memory).
+
+services:
+  chroma:
+    image: chromadb/chroma:1.4.1
+    ports:
+      - "8000:8000"
+    environment:
+      ANONYMIZED_TELEMETRY: "FALSE"
+      IS_PERSISTENT: "TRUE"
+      PERSIST_DIRECTORY: /data
+    volumes:
+      - chroma-data:/data
+
+volumes:
+  chroma-data:

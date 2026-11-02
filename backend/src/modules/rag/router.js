@@ -18,7 +18,7 @@ export function createRagRouter(rag) {
   router.post(
     "/reingest",
     asyncHandler(async (req, res) => {
-      res.json({ status: "ok", chunks: await rag.ingest() });
+      res.json({ status: "ok", chunks: await rag.ingest(), store: rag.storeKind });
     }),
   );
 

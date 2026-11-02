@@ -204,7 +204,12 @@ cutoff and Brazil (0.394) is refused without calling the model. "Who is the CEO?
 0.566 still gets through; raising the cutoff would drop the leash question at 0.571.
 The numbers are in `backend/src/modules/rag/eval/baseline.json`.
 
-Still to come: Chroma for persistence, and loading more than one file.
+Done after that: Chroma, started with `docker compose up -d` from `backend/`. The
+original in-memory store is still in `store.js` and still selected by `RAG_STORE=memory`.
+With `RAG_STORE=chroma`, a restart loads the six chunks and does not embed them again.
+Recall@3 stayed 1.0. The gym chunk still scored 0.774.
+
+Still to come: loading more than one file.
 
 ### Milestone 3 — Streaming and conversations · planned
 

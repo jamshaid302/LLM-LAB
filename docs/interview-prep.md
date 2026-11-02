@@ -92,11 +92,19 @@ cutoff, and mean reciprocal rank stayed 1.0, so the right chunk was still rank 1
 because the leash question only scored 0.571 and a higher line would drop a real answer.
 That tradeoff is in `eval/baseline.json`.
 
+### Where do the vectors live?
+
+In Chroma, a separate vector database running in Docker. The original in-memory store
+is still in the code and tests still use it. `RAG_STORE=memory` switches back to it.
+Chroma stores cosine distance, so the app converts that to similarity before the 0.5
+cutoff. After the swap, recall@3 was still 1.0 and the gym chunk still scored 0.774.
+Restarting the API, and restarting the Chroma container, both loaded the six chunks
+without embedding them again.
+
 ### What is still missing?
 
-Citations are not checked against the chunk text. The store is in memory, so a restart
-re-embeds everything. A persistent vector database is the next storage step, not a
-change to the cutoff.
+Citations are not checked against the chunk text. The corpus is still one file.
+Streaming and saved conversations are the next product step, not another change to the cutoff.
 
 ### Where does RAG show up in a MERN product?
 
@@ -441,5 +449,6 @@ scored 0.57 and still gets through, and raising the line would drop a real answe
 playground that holds temperature and seed still and runs the same task as zero-shot,
 role, few-shot, and chain-of-thought. A separate route parses `{ sentiment, nextStep }`,
 retries once with the validation error, and returns 422 with no object if both tries
-fail. The cutoff and the golden set are already in place. Next I would persist the
-vectors so a restart does not re-embed the corpus."
+fail. The cutoff, the golden set, and a Chroma store are already in place. A restart
+loads the chunks instead of embedding them again. Next I would stream the answer and
+save the conversation."

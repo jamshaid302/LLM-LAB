@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { MemoryVectorStore } from "langchain/vectorstores/memory";
+import { createHash } from "node:crypto";
 
 import { config } from "../../core/config.js";
 import { createChatModel, createEmbeddings } from "../../core/ollama.js";
@@ -10,6 +10,7 @@ import { createChatModel, createEmbeddings } from "../../core/ollama.js";
 import { splitText } from "./chunking.js";
 import { NO_ANSWER, buildRagPrompt } from "./prompt.js";
 import { applyCutoff, scoreRetrieval } from "./retrieval.js";
+import { createVectorStore } from "./store.js";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
 export const DEFAULT_CORPUS = path.join(moduleDir, "docs", "knowledge.txt");
@@ -26,32 +27,57 @@ export function createRagService({
   questionsPath = QUESTIONS_PATH,
   topK = config.rag.topK,
   minScore = config.rag.minScore,
+  store,
+  storeKind = "memory",
+  chromaUrl = config.rag.chromaUrl,
 } = {}) {
-  let vectorStore = new MemoryVectorStore(embeddings);
+  const vectorStore =
+    store ?? createVectorStore({ kind: storeKind, embeddings, chromaUrl });
   let chunkCount = 0;
   const sourceName = path.basename(corpusPath);
 
-  async function ingest() {
+  async function sync({ force }) {
     const raw = await fs.readFile(corpusPath, "utf-8");
+    const hash = createHash("sha256").update(raw).digest("hex");
+
+    if (!force) {
+      const existing = await vectorStore.status();
+      const sameCorpus = existing.corpusHash === hash;
+      const cosine = vectorStore.kind !== "chroma" || existing.space === "cosine";
+      if (existing.count > 0 && sameCorpus && cosine) {
+        chunkCount = existing.count;
+        return { chunks: chunkCount, embedded: false, store: vectorStore.kind };
+      }
+    }
+
     const chunks = await splitText(raw);
     for (const chunk of chunks) {
       chunk.metadata = { ...chunk.metadata, source: sourceName };
     }
 
-    // Rebuild rather than append, so re-ingesting never duplicates entries.
-    vectorStore = new MemoryVectorStore(embeddings);
-    await vectorStore.addDocuments(chunks);
-
+    // Replace rather than append, so a second ingest never duplicates entries.
+    await vectorStore.replace(chunks, { corpusHash: hash });
     chunkCount = chunks.length;
-    return chunkCount;
+    return { chunks: chunkCount, embedded: true, store: vectorStore.kind };
+  }
+
+  /** Startup path. Chroma skips the embed when this corpus is already stored. */
+  async function load() {
+    return sync({ force: false });
+  }
+
+  /** Re-ingest button and tests. Always rebuilds. */
+  async function ingest() {
+    const result = await sync({ force: true });
+    return result.chunks;
   }
 
   async function retrieve(question) {
-    const results = await vectorStore.similaritySearchWithScore(question, topK);
-    return results.map(([doc, score]) => ({
-      text: doc.pageContent,
-      score,
-      source: doc.metadata?.source ?? sourceName,
+    const hits = await vectorStore.search(question, topK);
+    return hits.map((hit) => ({
+      text: hit.text,
+      score: hit.score,
+      source: hit.source ?? sourceName,
     }));
   }
 
@@ -93,6 +119,7 @@ export function createRagService({
 
   return {
     ingest,
+    load,
     ask,
     retrieve,
     evaluate,
@@ -101,6 +128,9 @@ export function createRagService({
     },
     get minScore() {
       return minScore;
+    },
+    get storeKind() {
+      return vectorStore.kind;
     },
   };
 }

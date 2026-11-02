@@ -9,6 +9,7 @@ function fakeRagService(overrides = {}) {
   return {
     chunkCount: 7,
     minScore: 0.5,
+    storeKind: "memory",
     ingest: vi.fn(async () => 7),
     ask: vi.fn(async (question) => ({ answer: `answer to ${question}`, matchedSources: [] })),
     ...overrides,
@@ -34,7 +35,7 @@ describe("platform routes", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.chatModel).toBeTruthy();
-    expect(res.body.modules.rag).toEqual({ chunks: 7, minScore: 0.5 });
+    expect(res.body.modules.rag).toEqual({ chunks: 7, minScore: 0.5, store: "memory" });
   });
 
   it("mounts each module under its own prefix", async () => {
@@ -91,7 +92,7 @@ describe("RAG module routes", () => {
     const { app, service } = appWithRag();
     const res = await request(app).post("/api/rag/reingest");
 
-    expect(res.body).toEqual({ status: "ok", chunks: 7 });
+    expect(res.body).toEqual({ status: "ok", chunks: 7, store: "memory" });
     expect(service.ingest).toHaveBeenCalledOnce();
   });
 });

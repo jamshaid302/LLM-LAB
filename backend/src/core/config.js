@@ -48,6 +48,9 @@ export const config = {
     minScore: readNumber("RAG_MIN_SCORE", 0.5),
     chunkSize: readInt("RAG_CHUNK_SIZE", 400),
     chunkOverlap: readInt("RAG_CHUNK_OVERLAP", 50),
+    // memory keeps the original in-process store. chroma persists across restarts.
+    store: readString("RAG_STORE", "memory"),
+    chromaUrl: readString("CHROMA_URL", "http://localhost:8000"),
   },
   ports: {
     api: readInt("API_PORT", 5001),
