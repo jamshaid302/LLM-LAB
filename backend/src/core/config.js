@@ -52,6 +52,14 @@ export const config = {
     store: readString("RAG_STORE", "memory"),
     chromaUrl: readString("CHROMA_URL", "http://localhost:8000"),
   },
+  mongo: {
+    url: readString("MONGO_URL", "mongodb://127.0.0.1:27018/lab"),
+  },
+  conversations: {
+    // How many saved messages are copied into the next prompt.
+    historyLimit: readInt("CONVERSATION_HISTORY_LIMIT", 12),
+    userId: "local",
+  },
   ports: {
     api: readInt("API_PORT", 5001),
   },

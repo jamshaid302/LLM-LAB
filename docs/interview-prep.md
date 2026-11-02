@@ -290,18 +290,27 @@ Server-Sent Events: `token` frames as Ollama produces them, then `done`. The pag
 appends each frame. Stop aborts that response, which aborts the Ollama request, and
 the tokens already on screen stay there. RAG uses the same stream after retrieval. A
 question below the cutoff still skips the model and sends the refusal as one token.
-The finished text is not stored. That is the conversations module.
+Streaming Chat itself does not save the reply. Conversations does.
 
 ---
 
-## Planned — conversations
+## Built — conversations
 
-### How do you store chat history in a MERN app?
+### Why do you have both MongoDB and a vector database?
 
-MongoDB. A thread document and a messages collection, with `userId`, `threadId`, role,
-and content. The API is ordinary CRUD plus the model call. When the history no longer
-fits the context window, summarize the older half and keep the summary plus the recent
-turns. That summary is itself a model call, so it has a token cost.
+They store different things. Chroma holds embeddings of the knowledge-base chunks and
+answers "which paragraph is closest to this question?" MongoDB holds threads and
+messages and answers "what did we already say, in order?"
+
+The next prompt uses both. Recent messages are copied out of MongoDB so the model can
+continue the transcript. If the new question also matches a chunk above the cutoff,
+that chunk is added as documents. "What is my name?" comes from the transcript. "Where
+is the gym?" comes from `knowledge.txt` when nobody has said it yet.
+
+A vector search is the wrong tool for "message 1, then 2, then 3." Putting chat text
+into the same Chroma collection as the knowledge base would let an old reply compete
+with the gym chunk. The last 12 messages are sent. Summarizing the older half is still
+open. There is one stand-in user, `local`, until auth exists.
 
 ---
 
@@ -452,5 +461,7 @@ playground that holds temperature and seed still and runs the same task as zero-
 role, few-shot, and chain-of-thought. A separate route parses `{ sentiment, nextStep }`,
 retries once with the validation error, and returns 422 with no object if both tries
 fail. The cutoff, the golden set, and a Chroma store are already in place. A restart
-loads the chunks instead of embedding them again. Answers now arrive token by token,
-and Stop aborts the model call. Next I would save the conversation."
+loads the chunks instead of embedding them again. Answers arrive token by token, and
+Stop aborts the model call. Threads and messages live in MongoDB, and the recent turns
+go into the next prompt along with any matching knowledge-base chunk. Next I would
+summarize a thread once it no longer fits the context window."

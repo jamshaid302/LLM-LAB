@@ -65,9 +65,9 @@ export const modules = [
     id: "conversations",
     name: "Conversations",
     group: "Chat & Memory",
-    status: "planned",
-    description:
-      "Threads and messages stored in MongoDB, with summarization and semantic recall of past chats.",
+    status: "ready",
+    description: "Threads and messages stored in MongoDB, then fed back into the next prompt.",
+    Page: lazy(() => import("./conversations/ConversationsPage.jsx")),
   },
   {
     id: "evaluation",

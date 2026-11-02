@@ -1,6 +1,5 @@
-# Persistent vector database for the RAG module.
+# Chroma stores document embeddings. MongoDB stores chat threads and messages.
 # From backend/: docker compose up -d
-# The in-memory store is still in src/modules/rag/store.js (RAG_STORE=memory).
 
 services:
   chroma:
@@ -14,5 +13,14 @@ services:
     volumes:
       - chroma-data:/data
 
+  mongo:
+    image: mongo:7
+    # 27018 on the host so this does not collide with another MongoDB already on 27017.
+    ports:
+      - "27018:27017"
+    volumes:
+      - mongo-data:/data/db
+
 volumes:
   chroma-data:
+  mongo-data:

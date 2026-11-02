@@ -49,31 +49,50 @@ Shared infrastructure (config, model providers, logging, evaluation utilities) g
 `core/` once two modules need it. Each module's actual technique (its prompts, retrieval
 strategy, agent loop) stays inside its own folder so it can be read on its own.
 
+### Why Chroma and MongoDB are both here
+
+They answer different questions.
+
+**Chroma** is the vector database. It stores the embeddings of `knowledge.txt`. A question
+is embedded the same way, and Chroma returns the nearest chunks. That is how the app
+finds "the gym is on the 3rd floor" when those words are not in the chat.
+
+**MongoDB** is the conversation record. It stores threads and messages in order: who
+said what, and when. The next prompt copies the recent turns out of MongoDB so the
+model can continue from what was already said. "What is my name?" works because an
+earlier message said the name, not because that sentence was embedded.
+
+A vector search cannot reliably return "message 1, then message 2, then message 3."
+A document database cannot find the nearest paragraph in the knowledge base. Using one
+database for both jobs would mix old chat text into the gym search, or lose the order
+of the transcript. The detailed version is in the
+[Conversations README](backend/src/modules/conversations/README.md#why-mongodb-and-chroma).
+
 ### Modules
 
 Each built module has its own README covering what it teaches, how it works, how it was
 implemented, its API, and a test plan with automated and manual checks. This file only
 summarizes them.
 
-| Module                  | Status    | What it teaches                                                                      | Docs                                                 |
-| ----------------------- | --------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------- |
-| LLM Fundamentals        | **ready** | Tokens, sampling, prompt patterns, and validated JSON output                         | [README](backend/src/modules/fundamentals/README.md) |
-| Providers & Cost        | planned   | Local and hosted models behind one interface, fallbacks, caching, token cost         | —                                                    |
-| RAG                     | **ready** | Chunking, embeddings, similarity search, and grounding answers in your own documents | [README](backend/src/modules/rag/README.md)          |
-| Advanced RAG            | planned   | Hybrid search, reranking, and query rewriting, measured against basic RAG            | —                                                    |
-| Semantic Search         | planned   | Embeddings outside chat: search, deduplication, clustering, recommendations          | —                                                    |
-| Document Pipeline       | planned   | PDF and Markdown upload, parsing, and embedding as background jobs                   | —                                                    |
-| Streaming Chat          | **ready** | Token-by-token answers over Server-Sent Events, with cancellation                    | [README](backend/src/modules/streaming/README.md)    |
-| Conversations           | planned   | Threads and messages in MongoDB, summarizing long history                            | —                                                    |
-| LLM Evaluation          | planned   | Golden datasets, retrieval metrics, and LLM-as-judge scoring                         | —                                                    |
-| Hallucination Detection | planned   | Checking that answers and citations are supported by the sources                     | —                                                    |
-| AI Agents               | planned   | Tool calling, a bounded reasoning loop, and agent evaluation                         | —                                                    |
-| Multi-Agent Systems     | planned   | Agents handing work to each other, and when that is overhead                         | —                                                    |
-| Security                | planned   | Prompt injection, PII, output sanitization, per-user data isolation                  | —                                                    |
-| Observability           | planned   | Tracing requests with latency and token cost                                         | —                                                    |
-| Deployment              | planned   | Docker, CI, rate limiting, graceful degradation                                      | —                                                    |
-| Multimodal AI           | planned   | Local vision and audio models, quantization trade-offs                               | —                                                    |
-| Fine-Tuning             | planned   | SFT, LoRA, and QLoRA on a GPU worker, compared with the base model                   | —                                                    |
+| Module                  | Status    | What it teaches                                                                      | Docs                                                  |
+| ----------------------- | --------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------- |
+| LLM Fundamentals        | **ready** | Tokens, sampling, prompt patterns, and validated JSON output                         | [README](backend/src/modules/fundamentals/README.md)  |
+| Providers & Cost        | planned   | Local and hosted models behind one interface, fallbacks, caching, token cost         | —                                                     |
+| RAG                     | **ready** | Chunking, embeddings, similarity search, and grounding answers in your own documents | [README](backend/src/modules/rag/README.md)           |
+| Advanced RAG            | planned   | Hybrid search, reranking, and query rewriting, measured against basic RAG            | —                                                     |
+| Semantic Search         | planned   | Embeddings outside chat: search, deduplication, clustering, recommendations          | —                                                     |
+| Document Pipeline       | planned   | PDF and Markdown upload, parsing, and embedding as background jobs                   | —                                                     |
+| Streaming Chat          | **ready** | Token-by-token answers over Server-Sent Events, with cancellation                    | [README](backend/src/modules/streaming/README.md)     |
+| Conversations           | **ready** | Threads and messages in MongoDB, replayed into the next prompt alongside Chroma      | [README](backend/src/modules/conversations/README.md) |
+| LLM Evaluation          | planned   | Golden datasets, retrieval metrics, and LLM-as-judge scoring                         | —                                                     |
+| Hallucination Detection | planned   | Checking that answers and citations are supported by the sources                     | —                                                     |
+| AI Agents               | planned   | Tool calling, a bounded reasoning loop, and agent evaluation                         | —                                                     |
+| Multi-Agent Systems     | planned   | Agents handing work to each other, and when that is overhead                         | —                                                     |
+| Security                | planned   | Prompt injection, PII, output sanitization, per-user data isolation                  | —                                                     |
+| Observability           | planned   | Tracing requests with latency and token cost                                         | —                                                     |
+| Deployment              | planned   | Docker, CI, rate limiting, graceful degradation                                      | —                                                     |
+| Multimodal AI           | planned   | Local vision and audio models, quantization trade-offs                               | —                                                     |
+| Fine-Tuning             | planned   | SFT, LoRA, and QLoRA on a GPU worker, compared with the base model                   | —                                                     |
 
 Planned modules appear in the sidebar with a "soon" badge and get a README when they are
 built. The [roadmap](#roadmap) below is the build order.
@@ -214,16 +233,18 @@ Still to come: loading more than one file.
 ### Milestone 3 — Streaming and conversations · in progress
 
 Done: token-by-token answers over Server-Sent Events, with a Stop button. Streaming Chat
-is the plain demo. The RAG page uses the same mechanism, so a grounded answer also
-appears as it is written. Closing the connection aborts the Ollama call. Nothing is
-saved yet.
+is the plain demo. The RAG page uses the same mechanism.
+
+Done after that: threads and messages in MongoDB. A reply is saved, and the recent
+turns are copied into the next prompt. If Chroma also finds a matching chunk, that
+chunk is added to the same prompt. One local user id, `local`, stands in until real
+auth. The last 12 messages are sent. Older ones are left in MongoDB and are not
+summarized yet.
 
 Still to come:
 
-- Threads and messages persisted in MongoDB.
-- Context windows in practice: summarizing or trimming history when a conversation grows
-  past what the model can read.
-- A minimal user concept, hardened into real auth in Milestone 6.
+- Summarizing the older half of a long thread so it still fits the context window.
+- A real user concept, hardened into auth in Milestone 6.
 
 ### Milestone 4 — Providers and cost · planned
 
