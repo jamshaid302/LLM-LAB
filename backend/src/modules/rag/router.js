@@ -22,5 +22,12 @@ export function createRagRouter(rag) {
     }),
   );
 
+  router.post(
+    "/eval",
+    asyncHandler(async (req, res) => {
+      res.json(await rag.evaluate());
+    }),
+  );
+
   return router;
 }

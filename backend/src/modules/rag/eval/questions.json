@@ -1,0 +1,18 @@
+{
+  "answerable": [
+    { "question": "Where is the company gym?", "expect": "3rd floor" },
+    { "question": "When is the company gym open?", "expect": "24/7" },
+    { "question": "What is the server room access code?", "expect": "4829" },
+    { "question": "When are pets allowed in the office?", "expect": "Fridays" },
+    { "question": "How must pets be kept in common areas?", "expect": "leash" },
+    { "question": "When are expense reports due?", "expect": "last day of each calendar month" },
+    { "question": "What happens if an expense report is late?", "expect": "manager approval" },
+    { "question": "What does the MERN stack consist of?", "expect": "MongoDB" },
+    { "question": "What is retrieval-augmented generation?", "expect": "knowledge base" },
+    { "question": "What port does Ollama listen on?", "expect": "11434" }
+  ],
+  "unanswerable": [
+    { "question": "What is the capital of Brazil?" },
+    { "question": "Who is the CEO of the company?" }
+  ]
+}

@@ -4,6 +4,7 @@ export default function RagPage() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
+  const [report, setReport] = useState(null);
   const chatEndRef = useRef(null);
 
   useEffect(() => {
@@ -32,7 +33,13 @@ export default function RagPage() {
       } else {
         setMessages((prev) => [
           ...prev,
-          { role: "bot", text: data.answer, sources: data.matchedSources },
+          {
+            role: "bot",
+            text: data.answer,
+            sources: data.matchedSources,
+            dropped: data.droppedSources,
+            refused: data.refused,
+          },
         ]);
       }
     } catch (err) {
@@ -58,11 +65,37 @@ export default function RagPage() {
     }
   }
 
+  async function handleEval() {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/rag/eval", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      setReport(data);
+    } catch (err) {
+      setMessages((prev) => [...prev, { role: "bot", text: `Score failed: ${err.message}` }]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div style={styles.page}>
-      <button onClick={handleReingest} disabled={loading} style={styles.reingestBtn}>
-        Re-ingest docs
-      </button>
+      <div style={styles.actions}>
+        <button onClick={handleReingest} disabled={loading} style={styles.reingestBtn}>
+          Re-ingest docs
+        </button>
+        <button onClick={handleEval} disabled={loading} style={styles.reingestBtn}>
+          Score retrieval
+        </button>
+      </div>
+      {report && (
+        <p style={styles.report}>
+          Recall@{report.k} before cutoff {(report.recallAtK.before * 100).toFixed(0)}%, after{" "}
+          {(report.recallAtK.after * 100).toFixed(0)}%. MRR after {report.mrr.after.toFixed(2)}. Unanswerable
+          questions refused by the cutoff: {report.refusedByCutoff}/{report.unanswerable}. Cutoff {report.minScore}.
+        </p>
+      )}
 
       <div style={styles.chatBox}>
         {messages.length === 0 && (
@@ -80,7 +113,12 @@ export default function RagPage() {
               <div style={styles.sources}>
                 {m.sources.map((s, j) => (
                   <div key={j}>
-                    [{j + 1}] (score {s.score}) {s.text.slice(0, 90)}...
+                    [{j + 1}] {s.source} (score {s.score}) {s.text.slice(0, 90)}...
+                  </div>
+                ))}
+                {m.dropped?.map((s, j) => (
+                  <div key={`d${j}`}>
+                    dropped {s.source} (score {s.score}, below cutoff) {s.text.slice(0, 70)}...
                   </div>
                 ))}
               </div>
@@ -109,6 +147,8 @@ export default function RagPage() {
 
 const styles = {
   page: { maxWidth: 760 },
+  actions: { display: "flex", gap: 8, marginBottom: 12 },
+  report: { color: "#94a3b8", fontSize: "0.85rem", marginTop: 0 },
   reingestBtn: {
     marginBottom: 12,
     padding: "6px 12px",

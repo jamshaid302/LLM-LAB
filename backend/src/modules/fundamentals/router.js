@@ -23,5 +23,14 @@ export function createFundamentalsRouter(runner) {
     }),
   );
 
+  router.post(
+    "/structured",
+    asyncHandler(async (req, res) => {
+      const result = await runner.extractStructured(req.body ?? {});
+      // 422: the model replied, but neither attempt was data the API can store.
+      res.status(result.ok ? 200 : 422).json(result);
+    }),
+  );
+
   return router;
 }

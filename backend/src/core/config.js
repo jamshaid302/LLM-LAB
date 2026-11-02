@@ -21,6 +21,17 @@ function readInt(name, fallback) {
   return parsed;
 }
 
+function readNumber(name, fallback) {
+  const raw = process.env[name];
+  if (raw === undefined || raw === "") return fallback;
+
+  const parsed = Number(raw);
+  if (!Number.isFinite(parsed)) {
+    throw new Error(`Env var ${name} must be a number, got "${raw}"`);
+  }
+  return parsed;
+}
+
 function readString(name, fallback) {
   const raw = process.env[name];
   return raw === undefined || raw === "" ? fallback : raw;
@@ -34,12 +45,13 @@ export const config = {
   },
   rag: {
     topK: readInt("RAG_TOP_K", 3),
+    minScore: readNumber("RAG_MIN_SCORE", 0.5),
     chunkSize: readInt("RAG_CHUNK_SIZE", 400),
     chunkOverlap: readInt("RAG_CHUNK_OVERLAP", 50),
   },
   ports: {
-    api: readInt("API_PORT", 5000),
+    api: readInt("API_PORT", 5001),
   },
 };
 
-export { readInt, readString };
+export { readInt, readNumber, readString };

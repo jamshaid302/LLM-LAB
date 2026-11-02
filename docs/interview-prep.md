@@ -82,14 +82,21 @@ question's vector is to a chunk's vector. In this app a real match scores around
 0.8, and an unrelated chunk scores around 0.4. The score is not a probability and it is
 not truth. It only says "this text is near the question."
 
-### What is wrong with your RAG today, and how would you fix it?
+### How did you decide the similarity cutoff?
 
-It always returns three chunks, even when all three scores are low, so an off-topic
-question still gets confident-looking context. The "I don't know" behavior is only a
-line in the prompt. I would add a score cutoff, store the file name on each chunk, and
-keep a small set of questions with known answers so I can measure recall before and
-after any change. The store is also in memory, so a restart re-embeds everything. A
-persistent vector database is the next step.
+I measured it. Ten questions whose answers are in the file all retrieved the right chunk,
+with top scores from 0.571 to 0.795. "What is the capital of Brazil?" scored 0.394, so a
+cutoff of 0.5 refuses it and never calls the model. Recall@3 stayed 1.0 after the
+cutoff, and mean reciprocal rank stayed 1.0, so the right chunk was still rank 1.
+"Who is the CEO?" scored 0.566 and still gets through. I did not raise the cutoff,
+because the leash question only scored 0.571 and a higher line would drop a real answer.
+That tradeoff is in `eval/baseline.json`.
+
+### What is still missing?
+
+Citations are not checked against the chunk text. The store is in memory, so a restart
+re-embeds everything. A persistent vector database is the next storage step, not a
+change to the cutoff.
 
 ### Where does RAG show up in a MERN product?
 
@@ -180,23 +187,25 @@ to score those runs instead of reading them.
 
 ---
 
-## Next — structured output
-
-Not built yet. This is the remaining fundamentals slice.
+## Built — structured output
 
 ### How do you make a model return JSON your API can trust?
 
-Ask for a schema in the prompt, parse the text, and validate it. If parsing fails, send
-the error back once and ask for a correction. If it fails again, return an error to the
-user. Do not show the raw text as if it were data. Some APIs have a JSON mode. That
-raises the odds, and it is still not a substitute for validation. Temperature 0 makes
-the shape more stable.
+Ask for a schema, parse the text, and validate the fields. If parsing fails, send the
+error back once and ask for a correction. If it fails again, return an error and do not
+invent the object. Temperature 0 makes the shape more stable. A vendor JSON mode raises
+the odds, and it is still not a substitute for validation.
+
+In this project `POST /api/fundamentals/structured` requires `sentiment` (`positive`,
+`negative`, or `mixed`) and a non-empty `nextStep`. A fenced or prose-wrapped object
+still parses. Two failures return 422 with `data: null` and both raw attempts. The UI
+shows the object only when `ok` is true.
 
 ### Where does this show up?
 
 Turning a support email into `{ sentiment, nextStep }`, extracting fields from an
-invoice, or filling a form. The UI can be a chat. The backend should still be a normal
-validated object.
+invoice, or filling a form. The screen can be a chat. The handler that writes to
+MongoDB should receive a validated object, the same as any other Express route.
 
 ---
 
@@ -424,10 +433,13 @@ keep the facts in retrieval.
 
 ## A short story you can tell
 
-"I built a local RAG chat. Retrieval always returned three chunks, so a question the
-documents could not answer still received unrelated context and only the prompt stopped
-a made-up answer. Real matches scored about 0.8 and misses about 0.4. I also built a
+"I built a local RAG chat. It used to return three chunks no matter the score, so an
+off-topic question still received unrelated context. I measured ten questions: the right
+chunk scored from 0.57 to 0.80, and Brazil scored 0.39. A cutoff at 0.5 kept recall@3
+at 1.0 and refuses Brazil without calling the model. A near miss, 'Who is the CEO?',
+scored 0.57 and still gets through, and raising the line would drop a real answer. I also built a
 playground that holds temperature and seed still and runs the same task as zero-shot,
-role, few-shot, and chain-of-thought, so a prompt change is measurable instead of a
-feeling. Next I would add a score cutoff and a small golden set before adding any
-fancier retrieval."
+role, few-shot, and chain-of-thought. A separate route parses `{ sentiment, nextStep }`,
+retries once with the validation error, and returns 422 with no object if both tries
+fail. The cutoff and the golden set are already in place. Next I would persist the
+vectors so a restart does not re-embed the corpus."

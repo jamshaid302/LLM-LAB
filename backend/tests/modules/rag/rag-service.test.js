@@ -67,6 +67,36 @@ describe("createRagService", () => {
     const { matchedSources } = await rag.ask("gym");
 
     expect(matchedSources[0].text.toLowerCase()).toContain("gym");
+    expect(matchedSources[0].source).toBe("knowledge.txt");
+  });
+
+  it("drops weak chunks and does not call the model when nothing remains", async () => {
+    const llm = { invoke: vi.fn(async () => "should not run") };
+    const rag = makeService({ llm, minScore: 1.01 });
+    await rag.ingest();
+
+    const result = await rag.ask("Where is the gym?");
+
+    expect(result.refused).toBe(true);
+    expect(result.answer).toMatch(/don't know/);
+    expect(result.matchedSources).toEqual([]);
+    expect(result.droppedSources.length).toBeGreaterThan(0);
+    expect(llm.invoke).not.toHaveBeenCalled();
+  });
+
+  it("keeps a strong match and still reports the weaker chunks as dropped", async () => {
+    const rag = makeService({ minScore: 0.8, topK: 3 });
+    await rag.ingest();
+
+    const result = await rag.ask("gym");
+
+    expect(result.refused).toBe(false);
+    expect(result.matchedSources).toHaveLength(1);
+    expect(result.matchedSources[0].text.toLowerCase()).toContain("gym");
+    expect(result.droppedSources.length).toBeGreaterThan(0);
+    for (const source of result.droppedSources) {
+      expect(Number(source.score)).toBeLessThan(0.8);
+    }
   });
 
   it("fails clearly when the corpus file is missing", async () => {

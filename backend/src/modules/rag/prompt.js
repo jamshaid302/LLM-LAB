@@ -2,7 +2,13 @@ export const NO_ANSWER = "I don't know based on the provided documents.";
 
 /** Numbers each retrieved chunk so the model has stable labels to cite. */
 export function formatContext(docs) {
-  return docs.map((doc, i) => `[${i + 1}] ${doc.pageContent}`).join("\n\n");
+  return docs
+    .map((doc, i) => {
+      const source = doc.metadata?.source;
+      const label = source ? `[${i + 1}] (${source})` : `[${i + 1}]`;
+      return `${label} ${doc.pageContent}`;
+    })
+    .join("\n\n");
 }
 
 export function buildRagPrompt({ question, docs }) {

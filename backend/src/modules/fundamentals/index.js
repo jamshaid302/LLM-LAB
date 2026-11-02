@@ -7,10 +7,12 @@ export function createFundamentalsModule({
   runner = createChatRunner(),
   complete,
   comparePatterns,
+  extractStructured,
 } = {}) {
   const chat = {
     complete: complete ?? runner.complete,
     comparePatterns: comparePatterns ?? runner.comparePatterns,
+    extractStructured: extractStructured ?? runner.extractStructured,
   };
 
   return {

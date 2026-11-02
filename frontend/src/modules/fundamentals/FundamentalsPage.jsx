@@ -22,6 +22,7 @@ export default function FundamentalsPage() {
   const [runs, setRuns] = useState([]);
   const [task, setTask] = useState(DEFAULT_TASK);
   const [patternRuns, setPatternRuns] = useState([]);
+  const [structured, setStructured] = useState(null);
 
   async function run() {
     setLoading(true);
@@ -67,6 +68,25 @@ export default function FundamentalsPage() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setPatternRuns(data.runs);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function extractJson() {
+    setLoading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/fundamentals/structured", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ task, ...samplingBody(), temperature: 0 }),
+      });
+      const data = await res.json();
+      if (!res.ok && res.status !== 422) throw new Error(data.error || `HTTP ${res.status}`);
+      setStructured(data);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -225,6 +245,50 @@ export default function FundamentalsPage() {
           </article>
         ))}
       </div>
+
+      <h2>Structured output</h2>
+      <p className="lesson">
+        Asking for a shape is not the same as receiving data. This call uses temperature 0
+        and requires <code>sentiment</code> and <code>nextStep</code>. If the reply is not
+        valid JSON, the server sends the error back once. A second failure returns 422 and
+        no object, so the UI cannot pretend the prose is a record.
+      </p>
+
+      <button
+        type="button"
+        className="primary-btn"
+        onClick={extractJson}
+        disabled={loading || !task.trim()}
+      >
+        {loading ? "Generating..." : "Extract JSON"}
+      </button>
+
+      {structured && (
+        <article className="run">
+          <header>
+            <strong>{structured.ok ? "Valid object" : "Rejected"}</strong>
+            <span className="muted">{structured.retried ? "retried once" : "first try"}</span>
+          </header>
+          {structured.ok ? (
+            <p>
+              sentiment: {structured.data.sentiment}
+              {"\n"}
+              nextStep: {structured.data.nextStep}
+            </p>
+          ) : (
+            <p className="error">{structured.error}</p>
+          )}
+          {structured.attempts?.map((attempt, index) => (
+            <details key={index}>
+              <summary>
+                Attempt {index + 1}
+                {attempt.ok ? " parsed" : ` failed: ${attempt.error}`}
+              </summary>
+              <pre>{attempt.text}</pre>
+            </details>
+          ))}
+        </article>
+      )}
     </div>
   );
 }

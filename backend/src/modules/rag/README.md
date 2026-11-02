@@ -28,13 +28,15 @@ docs/knowledge.txt
    → embeddings        each chunk becomes a vector (nomic-embed-text via Ollama)
    → vector store      MemoryVectorStore, compared by cosine similarity
    → ask(question)     embed the question, take the top 3 nearest chunks
-   → prompt.js         number the chunks [1], [2], [3] and build a grounding prompt
+   → retrieval.js      drop any chunk below RAG_MIN_SCORE (default 0.5)
+   → if none remain    return "I don't know" and do not call the model
+   → prompt.js         number the kept chunks and name the source file
    → LLM               answer from that context, or say "I don't know"
 ```
 
-The answer comes back with the chunks it used and a similarity score for each. Close to
-1 means very similar; real matches here score around 0.7–0.8, unrelated chunks around
-0.4.
+The answer comes back with the chunks it kept, the ones it dropped, and a similarity
+score for each. Close to 1 means very similar. On this corpus, real matches score about
+0.57–0.80 and a clearly unrelated question scores about 0.39.
 
 ## How we implemented it
 
@@ -44,18 +46,23 @@ The answer comes back with the chunks it used and a similarity score for each. C
 | --- | --- |
 | `chunking.js` | Splits text with LangChain's `RecursiveCharacterTextSplitter`. Rejects an overlap that is not smaller than the chunk size. No network. |
 | `prompt.js` | Numbers the retrieved chunks and builds the grounding prompt, including the exact refusal sentence. No network. |
-| `rag-service.js` | The pipeline: read the corpus, split, embed, store, search, call the model. The model and embedding clients are passed in, so tests can use fakes. |
-| `router.js` | `POST /ask` and `POST /reingest`. A missing question is rejected with a 400 before the model is called. |
-| `index.js` | The module definition: id, router, startup ingestion, and chunk count for `/api/health`. |
+| `retrieval.js` | Applies the score cutoff and scores a question set with recall@k and mean reciprocal rank, before and after the cutoff. No network. |
+| `rag-service.js` | The pipeline: read the corpus, split, stamp each chunk with the file name, embed, store, search, drop weak chunks, call the model only when something remains. The model and embedding clients are passed in, so tests can use fakes. |
+| `router.js` | `POST /ask`, `POST /reingest`, and `POST /eval`. A missing question is rejected with a 400 before the model is called. |
+| `index.js` | The module definition: id, router, startup ingestion, and chunk count plus cutoff for `/api/health`. |
 | `docs/knowledge.txt` | The sample knowledge base. |
+| `eval/questions.json` | 10 answerable questions with the phrase that should appear in the retrieved chunk, plus 2 questions the corpus cannot answer. |
+| `eval/baseline.json` | The scores from a real `nomic-embed-text` run. Recall@3 stayed 1.0 after the cutoff. |
 
 Settings come from `backend/.env` through `core/config.js`: `RAG_TOP_K` (default 3),
-`RAG_CHUNK_SIZE` (400), `RAG_CHUNK_OVERLAP` (50), and the model names.
+`RAG_MIN_SCORE` (0.5), `RAG_CHUNK_SIZE` (400), `RAG_CHUNK_OVERLAP` (50), and the model names.
 
 ### Frontend (`frontend/src/modules/rag/RagPage.jsx`)
 
-A chat panel that posts to `/api/rag/ask`, shows each answer with its sources and
-scores, and has a **Re-ingest docs** button that calls `/api/rag/reingest`.
+A chat panel that posts to `/api/rag/ask`, shows each kept chunk with its file name and
+score, and lists dropped chunks as below the cutoff. **Re-ingest docs** rebuilds the
+store. **Score retrieval** calls `/api/rag/eval` and prints recall before and after the
+cutoff.
 
 ### Design decisions
 
@@ -80,14 +87,22 @@ Returns:
 ```json
 {
   "answer": "The company gym is located on the 3rd floor and is open 24/7.",
-  "matchedSources": [{ "text": "The company gym is located on the 3rd floor...", "score": "0.802" }]
+  "refused": false,
+  "matchedSources": [{ "text": "The company gym is located on the 3rd floor...", "score": "0.774", "source": "knowledge.txt" }],
+  "droppedSources": [{ "text": "Pets are allowed...", "score": "0.430", "source": "knowledge.txt" }]
 }
 ```
+
+When every hit is below the cutoff, `refused` is true, `matchedSources` is empty, and
+`answer` is the refusal sentence. The model is not called.
 
 `POST /api/rag/reingest` rebuilds the store from `docs/knowledge.txt` and returns
 `{ "status": "ok", "chunks": 6 }`.
 
-`GET /api/health` reports the chunk count under `modules.rag`.
+`POST /api/rag/eval` embeds every question in `eval/questions.json` and returns
+`recallAtK`, `mrr`, and `refusedByCutoff`. It does not call the chat model.
+
+`GET /api/health` reports the chunk count and `minScore` under `modules.rag`.
 
 ## Test plan
 
@@ -106,8 +121,9 @@ by shared keywords, so search results are predictable.
 | --- | --- |
 | `tests/modules/rag/chunking.test.js` | Long text splits into several chunks, each within the size limit; short text stays one chunk; an invalid overlap is rejected. |
 | `tests/modules/rag/prompt.test.js` | Chunks are numbered from `[1]`; the prompt contains the question, every chunk, and the refusal instruction; it ends with `Answer:`. |
-| `tests/modules/rag/rag-service.test.js` | Ingestion counts chunks; re-ingesting does not duplicate them; at most top-K sources come back, each with a score; the chunk containing the query word ranks first; a missing corpus file fails clearly. |
-| `tests/app.test.js` (RAG section) | `/api/rag/ask` returns the service's answer; a missing question gets 400 and never reaches the model; a pipeline error becomes a JSON 500; `/api/rag/reingest` rebuilds the store. |
+| `tests/modules/rag/retrieval.test.js` | The cutoff splits hits into kept and dropped. Recall stays 1 when the right chunk is above the line, and falls when the cutoff removes that chunk. An unanswerable question whose hits are all below the line counts as refused. |
+| `tests/modules/rag/rag-service.test.js` | Ingestion counts chunks; re-ingesting does not duplicate them; at most top-K sources come back, each with a score and the file name `knowledge.txt`; a cutoff above every score refuses without calling the model; a cutoff of 0.8 keeps the gym chunk and reports the rest as dropped; a missing corpus file fails clearly. |
+| `tests/app.test.js` (RAG section) | `/api/rag/ask` returns the service's answer; a missing question gets 400 and never reaches the model; a pipeline error becomes a JSON 500; `/api/rag/reingest` rebuilds the store; `/api/rag/eval` returns the report. |
 
 ### Manual tests
 
@@ -118,21 +134,23 @@ Start the backend and frontend, open **RAG**, and check each row.
 | Watch the backend log on startup | `[rag] 6 chunks embedded` |
 | Ask "Where is the company gym?" | 3rd floor, open 24/7; top source scores about 0.8 |
 | Ask "When are pets allowed in the office?" | Fridays only; top source scores about 0.7 |
-| Ask "What is the capital of Brazil?" | "I don't know based on the provided documents." Top scores are all around 0.4 |
-| Add a sentence to `docs/knowledge.txt`, click **Re-ingest docs**, ask about it | The new fact is answered and its chunk appears in the sources |
+| Ask "What is the capital of Brazil?" | "I don't know", with no kept sources. Dropped scores are about 0.39. The model is not called |
+| Ask "Who is the CEO of the company?" | This one still reaches the model. Its top score was 0.566, just above the 0.5 cutoff |
+| Click **Score retrieval** | Recall@3 before 100%, after 100%. Unanswerable refused: 1/2 |
+| Add a sentence to `docs/knowledge.txt`, click **Re-ingest docs**, ask about it | The new fact is answered and its chunk is labeled `knowledge.txt` |
 | Stop Ollama and ask anything | An error message in the chat, not a frozen page |
 
-The Brazil question is the most important one. The model refuses correctly, but
-retrieval still passed it three unrelated chunks. Right now only the prompt instruction
-stops a wrong answer.
+Brazil is refused because retrieval found nothing strong enough to send. The CEO question
+is the remaining hole: the words overlap the corpus enough to clear 0.5, and the prompt
+is again the only thing stopping a made-up name.
 
 ## Known limitations
 
 Each is scheduled in the [roadmap](../../../../README.md#roadmap):
 
-- **Retrieval is unconditional.** Three chunks come back no matter how low their scores.
+- **The cutoff is a blunt threshold.** It refused Brazil (0.394) and kept every answerable question, including the leash question at 0.571. It did not refuse "Who is the CEO?" (0.566). Raising it further would start dropping real answers.
 - **Citations are unverified.** Nothing checks that a cited chunk supports the claim.
-- **No source metadata.** A chunk cannot say which document it came from.
+- **One file of source metadata.** Chunks are labeled `knowledge.txt`. A folder of documents is not loaded yet.
 - **No conversation memory.** Each question is answered on its own.
 - **No streaming.** The UI waits for the whole answer.
 - **`/api/rag/reingest` is unauthenticated.** Fine locally, not once deployed.
@@ -143,5 +161,6 @@ Each is scheduled in the [roadmap](../../../../README.md#roadmap):
 2. Set `RAG_CHUNK_SIZE=100` in `backend/.env` and restart. Answers fragment because
    chunks stop holding complete thoughts.
 3. Set `RAG_TOP_K=1` and see which questions start failing.
-4. Ask ten questions the corpus cannot answer and count how many get a confident wrong
-   answer. That count is what Milestone 2 turns into a tracked number.
+4. Set `RAG_MIN_SCORE=0.6` in `backend/.env`, restart, and click **Score retrieval**.
+   Recall after the cutoff should drop, because the leash question scored 0.571. Put it
+   back to 0.5 afterward. That is the tradeoff the baseline records.

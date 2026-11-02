@@ -55,25 +55,25 @@ Each built module has its own README covering what it teaches, how it works, how
 implemented, its API, and a test plan with automated and manual checks. This file only
 summarizes them.
 
-| Module                  | Status          | What it teaches                                                                      | Docs                                                 |
-| ----------------------- | --------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------- |
-| LLM Fundamentals        | **in progress** | Tokens, sampling, and prompt patterns (zero-shot, role, few-shot, chain-of-thought)  | [README](backend/src/modules/fundamentals/README.md) |
-| Providers & Cost        | planned         | Local and hosted models behind one interface, fallbacks, caching, token cost         | —                                                    |
-| RAG                     | **ready**       | Chunking, embeddings, similarity search, and grounding answers in your own documents | [README](backend/src/modules/rag/README.md)          |
-| Advanced RAG            | planned         | Hybrid search, reranking, and query rewriting, measured against basic RAG            | —                                                    |
-| Semantic Search         | planned         | Embeddings outside chat: search, deduplication, clustering, recommendations          | —                                                    |
-| Document Pipeline       | planned         | PDF and Markdown upload, parsing, and embedding as background jobs                   | —                                                    |
-| Streaming Chat          | planned         | Token-by-token answers over Server-Sent Events, with cancellation                    | —                                                    |
-| Conversations           | planned         | Threads and messages in MongoDB, summarizing long history                            | —                                                    |
-| LLM Evaluation          | planned         | Golden datasets, retrieval metrics, and LLM-as-judge scoring                         | —                                                    |
-| Hallucination Detection | planned         | Checking that answers and citations are supported by the sources                     | —                                                    |
-| AI Agents               | planned         | Tool calling, a bounded reasoning loop, and agent evaluation                         | —                                                    |
-| Multi-Agent Systems     | planned         | Agents handing work to each other, and when that is overhead                         | —                                                    |
-| Security                | planned         | Prompt injection, PII, output sanitization, per-user data isolation                  | —                                                    |
-| Observability           | planned         | Tracing requests with latency and token cost                                         | —                                                    |
-| Deployment              | planned         | Docker, CI, rate limiting, graceful degradation                                      | —                                                    |
-| Multimodal AI           | planned         | Local vision and audio models, quantization trade-offs                               | —                                                    |
-| Fine-Tuning             | planned         | SFT, LoRA, and QLoRA on a GPU worker, compared with the base model                   | —                                                    |
+| Module                  | Status    | What it teaches                                                                      | Docs                                                 |
+| ----------------------- | --------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------- |
+| LLM Fundamentals        | **ready** | Tokens, sampling, prompt patterns, and validated JSON output                         | [README](backend/src/modules/fundamentals/README.md) |
+| Providers & Cost        | planned   | Local and hosted models behind one interface, fallbacks, caching, token cost         | —                                                    |
+| RAG                     | **ready** | Chunking, embeddings, similarity search, and grounding answers in your own documents | [README](backend/src/modules/rag/README.md)          |
+| Advanced RAG            | planned   | Hybrid search, reranking, and query rewriting, measured against basic RAG            | —                                                    |
+| Semantic Search         | planned   | Embeddings outside chat: search, deduplication, clustering, recommendations          | —                                                    |
+| Document Pipeline       | planned   | PDF and Markdown upload, parsing, and embedding as background jobs                   | —                                                    |
+| Streaming Chat          | planned   | Token-by-token answers over Server-Sent Events, with cancellation                    | —                                                    |
+| Conversations           | planned   | Threads and messages in MongoDB, summarizing long history                            | —                                                    |
+| LLM Evaluation          | planned   | Golden datasets, retrieval metrics, and LLM-as-judge scoring                         | —                                                    |
+| Hallucination Detection | planned   | Checking that answers and citations are supported by the sources                     | —                                                    |
+| AI Agents               | planned   | Tool calling, a bounded reasoning loop, and agent evaluation                         | —                                                    |
+| Multi-Agent Systems     | planned   | Agents handing work to each other, and when that is overhead                         | —                                                    |
+| Security                | planned   | Prompt injection, PII, output sanitization, per-user data isolation                  | —                                                    |
+| Observability           | planned   | Tracing requests with latency and token cost                                         | —                                                    |
+| Deployment              | planned   | Docker, CI, rate limiting, graceful degradation                                      | —                                                    |
+| Multimodal AI           | planned   | Local vision and audio models, quantization trade-offs                               | —                                                    |
+| Fine-Tuning             | planned   | SFT, LoRA, and QLoRA on a GPU worker, compared with the base model                   | —                                                    |
 
 Planned modules appear in the sidebar with a "soon" badge and get a README when they are
 built. The [roadmap](#roadmap) below is the build order.
@@ -196,18 +196,15 @@ missing from self-taught AI portfolios, and the part interviewers probe hardest.
 research-flavored topics come last: they are valuable to understand, but fine-tuning and
 multi-agent orchestration are rarely what a full-stack role actually needs.
 
-### Milestone 2 — RAG hardening and measurement · next
+### Milestone 2 — RAG hardening and measurement · in progress
 
-A retrieval system whose quality you can state as a number.
+Done: a similarity cutoff at 0.5, the file name on every chunk, and a 12-question set
+scored with recall@k and MRR. On `nomic-embed-text`, recall@3 stayed 1.0 after the
+cutoff and Brazil (0.394) is refused without calling the model. "Who is the CEO?" at
+0.566 still gets through; raising the cutoff would drop the leash question at 0.571.
+The numbers are in `backend/src/modules/rag/eval/baseline.json`.
 
-- A swappable vector store interface in `core/`, with Chroma (via Docker) for
-  persistence and `MemoryVectorStore` kept as the zero-setup default.
-- Multi-document ingestion with source metadata on every chunk.
-- A similarity threshold and a real "I don't know" path. Today three chunks come back no
-  matter how irrelevant they are: an off-topic question scored ~0.39 while a genuine
-  match scored ~0.80, and both returned three chunks.
-- A golden question set scored with recall@k and MRR. This becomes the baseline every
-  later retrieval change has to beat.
+Still to come: Chroma for persistence, and loading more than one file.
 
 ### Milestone 3 — Streaming and conversations · planned
 
@@ -271,15 +268,15 @@ Tracing a request through retrieval and generation with latency and token counts
 structured logging, Docker for the full stack, CI, and graceful degradation when a model
 is unavailable.
 
-### Milestone 12 — LLM fundamentals · in progress
+### Milestone 12 — LLM fundamentals · done
 
-Started early, ahead of the rest of this roadmap. The interview gap was being able to
-explain what an LLM is actually doing.
+Started early, ahead of the rest of this roadmap, because explaining what an LLM is
+doing was the interview gap.
 
 Done: temperature, top-p, seed, max tokens, real token counts next to the
-`characters / 4` estimate, and a four-way prompt comparison (zero-shot, role, few-shot,
-chain-of-thought) that holds sampling still. Still to come: structured JSON output
-with validation.
+`characters / 4` estimate, a four-way prompt comparison, and structured JSON with one
+retry. A reply that still fails validation comes back as 422 with no object. Next is
+RAG hardening: a similarity cutoff, source metadata, and a scored question set.
 
 ### Milestone 13 — Advanced topics · planned
 

@@ -3,6 +3,7 @@ import { HttpError } from "../../core/http.js";
 
 import { buildAllPatterns } from "./prompts.js";
 import { estimateTokens, parseSampling } from "./sampling.js";
+import { JSON_SYSTEM, correctionMessage, parseSupportJson } from "./structured.js";
 
 /**
  * Chat completions against Ollama. `fetchImpl` is injectable so tests never call a
@@ -85,17 +86,78 @@ export function createChatRunner({
     return {
       task,
       model,
-      settings: {
-        temperature: settings.temperature,
-        topP: settings.topP,
-        maxTokens: settings.maxTokens,
-        ...(settings.seed !== undefined ? { seed: settings.seed } : {}),
-      },
+      settings: sharedSettings(settings),
       runs,
     };
   }
 
-  return { complete, comparePatterns };
+  async function extractStructured(body) {
+    const task = typeof body?.task === "string" ? body.task.trim() : "";
+    if (!task) throw new HttpError(400, "Missing 'task'");
+
+    const settings = parseSampling({ ...body, prompt: task });
+    const messages = [
+      { role: "system", content: JSON_SYSTEM },
+      { role: "user", content: task },
+    ];
+
+    const first = await run(settings, messages);
+    const firstParsed = parseSupportJson(first.text);
+    const attempts = [attemptFrom(first, firstParsed)];
+
+    if (firstParsed.ok) {
+      return structuredResult({ settings, retried: false, data: firstParsed.data, attempts });
+    }
+
+    const retryMessages = [
+      ...messages,
+      { role: "assistant", content: first.text },
+      { role: "user", content: correctionMessage(firstParsed.error) },
+    ];
+    const second = await run(settings, retryMessages);
+    const secondParsed = parseSupportJson(second.text);
+    attempts.push(attemptFrom(second, secondParsed));
+
+    return structuredResult({
+      settings,
+      retried: true,
+      data: secondParsed.ok ? secondParsed.data : null,
+      attempts,
+    });
+  }
+
+  function structuredResult({ settings, retried, data, attempts }) {
+    return {
+      ok: data !== null,
+      retried,
+      data,
+      error: data ? null : attempts.at(-1).error,
+      model,
+      settings: sharedSettings(settings),
+      attempts,
+    };
+  }
+
+  return { complete, comparePatterns, extractStructured };
+}
+
+function sharedSettings(settings) {
+  return {
+    temperature: settings.temperature,
+    topP: settings.topP,
+    maxTokens: settings.maxTokens,
+    ...(settings.seed !== undefined ? { seed: settings.seed } : {}),
+  };
+}
+
+function attemptFrom(result, parsed) {
+  return {
+    text: result.text,
+    ok: parsed.ok,
+    error: parsed.ok ? null : parsed.error,
+    tokens: result.tokens,
+    durationMs: result.durationMs,
+  };
 }
 
 /** @deprecated Use createChatRunner().complete. Kept so older call sites stay valid. */

@@ -8,6 +8,7 @@ import { createRagModule } from "../src/modules/rag/index.js";
 function fakeRagService(overrides = {}) {
   return {
     chunkCount: 7,
+    minScore: 0.5,
     ingest: vi.fn(async () => 7),
     ask: vi.fn(async (question) => ({ answer: `answer to ${question}`, matchedSources: [] })),
     ...overrides,
@@ -33,7 +34,7 @@ describe("platform routes", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.chatModel).toBeTruthy();
-    expect(res.body.modules.rag).toEqual({ chunks: 7 });
+    expect(res.body.modules.rag).toEqual({ chunks: 7, minScore: 0.5 });
   });
 
   it("mounts each module under its own prefix", async () => {
@@ -92,5 +93,20 @@ describe("RAG module routes", () => {
 
     expect(res.body).toEqual({ status: "ok", chunks: 7 });
     expect(service.ingest).toHaveBeenCalledOnce();
+  });
+});
+
+describe("POST /api/rag/eval", () => {
+  it("returns the retrieval report from the service", async () => {
+    const service = fakeRagService({
+      evaluate: vi.fn(async () => ({ recallAtK: { before: 1, after: 1 } })),
+    });
+    const { app } = appWithRag(service);
+
+    const res = await request(app).post("/api/rag/eval");
+
+    expect(res.status).toBe(200);
+    expect(res.body.recallAtK.after).toBe(1);
+    expect(service.evaluate).toHaveBeenCalledOnce();
   });
 });

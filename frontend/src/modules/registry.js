@@ -12,7 +12,7 @@ export const modules = [
     group: "Foundations",
     status: "ready",
     description:
-      "Tokens, sampling, and prompt patterns. Same task, four ways of asking.",
+      "Tokens, sampling, prompt patterns, and JSON the API can actually store.",
     Page: lazy(() => import("./fundamentals/FundamentalsPage.jsx")),
   },
   {

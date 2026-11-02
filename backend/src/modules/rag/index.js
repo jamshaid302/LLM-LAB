@@ -11,7 +11,7 @@ export function createRagModule({ service = createRagService() } = {}) {
       return `${chunks} chunks embedded`;
     },
     health() {
-      return { chunks: service.chunkCount };
+      return { chunks: service.chunkCount, minScore: service.minScore };
     },
   };
 }
