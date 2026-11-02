@@ -2,7 +2,7 @@ import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 
 import { createApp } from "../../../src/app.js";
-import { createCompleter } from "../../../src/modules/fundamentals/complete.js";
+import { createChatRunner } from "../../../src/modules/fundamentals/complete.js";
 import { createFundamentalsModule } from "../../../src/modules/fundamentals/index.js";
 
 function ollamaResponse(content, counts = {}) {
@@ -18,10 +18,10 @@ function ollamaResponse(content, counts = {}) {
   };
 }
 
-describe("createCompleter", () => {
+describe("createChatRunner", () => {
   it("sends sampling options and reports real token counts beside the estimate", async () => {
     const fetchImpl = vi.fn(async () => ollamaResponse("Bluebird Coffee."));
-    const complete = createCompleter({ fetchImpl, baseUrl: "http://ollama.test", model: "test-model" });
+    const { complete } = createChatRunner({ fetchImpl, baseUrl: "http://ollama.test", model: "test-model" });
 
     const result = await complete({ prompt: "tagline", temperature: 0, seed: 1, maxTokens: 32 });
 
@@ -42,7 +42,7 @@ describe("createCompleter", () => {
     const fetchImpl = vi.fn(async () => {
       throw new Error("connect ECONNREFUSED");
     });
-    const complete = createCompleter({ fetchImpl, baseUrl: "http://ollama.test" });
+    const { complete } = createChatRunner({ fetchImpl, baseUrl: "http://ollama.test" });
 
     await expect(complete({ prompt: "hi" })).rejects.toThrow(/Cannot reach Ollama/);
   });
@@ -73,5 +73,51 @@ describe("POST /api/fundamentals/complete", () => {
 
     expect(res.status).toBe(400);
     expect(complete).not.toHaveBeenCalled();
+  });
+});
+
+describe("pattern comparison", () => {
+  it("runs every pattern with the same sampling settings and the task last", async () => {
+    const fetchImpl = vi.fn(async () => ollamaResponse("Sentiment: negative"));
+    const { comparePatterns } = createChatRunner({
+      fetchImpl,
+      baseUrl: "http://ollama.test",
+      model: "test-model",
+    });
+
+    const result = await comparePatterns({
+      task: "The app crashed.",
+      temperature: 0,
+      seed: 1,
+      maxTokens: 40,
+    });
+
+    expect(result.runs.map((run) => run.pattern)).toEqual([
+      "zero-shot",
+      "role",
+      "few-shot",
+      "chain-of-thought",
+    ]);
+    expect(fetchImpl).toHaveBeenCalledTimes(4);
+
+    const bodies = fetchImpl.mock.calls.map(([, init]) => JSON.parse(init.body));
+    for (const body of bodies) {
+      expect(body.options).toEqual({ temperature: 0, top_p: 0.9, num_predict: 40, seed: 1 });
+      expect(body.messages.at(-1)).toEqual({ role: "user", content: "The app crashed." });
+    }
+    expect(bodies[2].messages.filter((message) => message.role === "assistant")).toHaveLength(2);
+  });
+
+  it("rejects a missing task before calling the model", async () => {
+    const fetchImpl = vi.fn();
+    const app = createApp([
+      createFundamentalsModule({ runner: createChatRunner({ fetchImpl, baseUrl: "http://ollama.test" }) }),
+    ]);
+
+    const res = await request(app).post("/api/fundamentals/patterns").send({});
+
+    expect(res.status).toBe(400);
+    expect(res.body.error).toMatch(/Missing 'task'/);
+    expect(fetchImpl).not.toHaveBeenCalled();
   });
 });

@@ -224,4 +224,39 @@ code {
 .run p {
   margin: 8px 0;
   line-height: 1.45;
+  white-space: pre-wrap;
+}
+
+.playground h2 {
+  margin: 12px 0 0;
+  font-size: 1.1rem;
+}
+
+.pattern-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.pattern-grid .run {
+  margin: 0;
+}
+
+.run summary {
+  cursor: pointer;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
+
+.run pre {
+  white-space: pre-wrap;
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin: 8px 0 0;
+}
+
+@media (max-width: 800px) {
+  .pattern-grid {
+    grid-template-columns: 1fr;
+  }
 }

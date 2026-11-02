@@ -19,17 +19,26 @@ picks one. The settings below control how it picks:
 - **Max tokens.** A hard stop on the answer's length. It cuts mid-sentence if hit.
 - **System prompt.** Instructions that frame every answer, such as "Answer in one sentence."
 
-Tokens also matter outside the playground: models are priced per token, and every model
-can only read a fixed number of them at once (its **context window**).
+A **prompt pattern** is a way of writing that input so the answer is more useful, without
+changing the model or the sampling settings:
+
+- **Zero-shot.** The task alone. No examples, no format. This is the baseline.
+- **Role.** A system prompt that assigns a job and a required shape.
+- **Few-shot.** Two finished examples of the shape you want, then the new task. The model
+  continues the pattern it just saw.
+- **Chain-of-thought.** Ask for the reasoning first and the answer last. Small models
+  skip steps unless you tell them not to. The cost is more tokens.
 
 **What you learn here:** why the same prompt gives different answers, how to make output
-repeatable when you need it, and why "characters divided by 4" is only a rough token
-estimate.
+repeatable, why "characters divided by 4" is only a rough token estimate, and how the
+wording of a prompt changes the answer when sampling is held still.
 
-**Covered so far:** sampling settings and token counts. **Next slices:** prompt patterns
-(few-shot, chain-of-thought) and structured JSON output with validation.
+**Covered so far:** sampling settings, token counts, and the four prompt patterns.
+**Next slice:** structured JSON output with validation and one retry.
 
 ## How it works
+
+Sampling, one prompt:
 
 ```
 playground form
@@ -38,6 +47,19 @@ playground form
    → complete.js     call Ollama's /api/chat with temperature, top_p, num_predict, seed
    → response        answer text, the settings used, real token counts, an estimate, time
 ```
+
+Prompt patterns, one task compared four ways:
+
+```
+task + the same sampling settings
+   → POST /api/fundamentals/patterns
+   → prompts.js      build zero-shot, role, few-shot, and chain-of-thought messages
+   → complete.js     call Ollama once per pattern, sequentially, with identical options
+   → response        four answers, each with the exact messages that were sent
+```
+
+Holding temperature and seed still is the point. If temperature is high, you cannot tell
+whether a different answer came from the prompt or from the sampling.
 
 Ollama reports how many tokens it actually read (`prompt_eval_count`) and wrote
 (`eval_count`). The page shows those beside the `characters / 4` estimate.
@@ -48,19 +70,25 @@ Ollama reports how many tokens it actually read (`prompt_eval_count`) and wrote
 
 | File | What it does |
 | --- | --- |
-| `sampling.js` | Validates the request: prompt required and at most 4000 characters, temperature 0–2, top-p 0–1, max tokens a whole number 1–512, optional seed. Also holds the token estimate. |
-| `complete.js` | Sends one non-streaming request to Ollama's chat endpoint with those settings and returns text, token counts, and generation time. The HTTP client is passed in, so tests never call a real model. |
-| `router.js` | `POST /complete`. Validates first, so a bad setting never spends a generation. |
+| `sampling.js` | Validates a completion: prompt required and at most 4000 characters, temperature 0–2, top-p 0–1, max tokens a whole number 1–512, optional seed. Also holds the token estimate. |
+| `prompts.js` | Builds the four message lists. The task is always the last user turn. Few-shot inserts two fixed examples before it. Unknown patterns and empty tasks are rejected. |
+| `complete.js` | `complete` sends one prompt. `comparePatterns` runs all four patterns with one shared set of sampling settings. The HTTP client is passed in, so tests never call a real model. |
+| `router.js` | `POST /complete` and `POST /patterns`. A bad setting is rejected before the model is called. |
 | `index.js` | The module definition the platform mounts at `/api/fundamentals`. |
 
 It calls Ollama's HTTP API directly instead of going through LangChain, so you can see
-exactly which settings reach the model.
+exactly which messages and settings reach the model.
 
 ### Frontend (`frontend/src/modules/fundamentals/FundamentalsPage.jsx`)
 
-A short explanation, **Precise** and **Creative** presets, fields for the system prompt
-and prompt, sliders for temperature and top-p, inputs for max tokens and seed, and the
-last six runs listed with their settings, token counts, and time.
+Two sections on one page.
+
+The first is the sampling playground: a short explanation, **Precise** and **Creative**
+presets, system prompt, prompt, sliders, and the last six runs with token counts.
+
+The second is prompt patterns: a task, a **Compare patterns** button, and four cards.
+Each card shows the answer, the token count, and a "Prompt sent" disclosure with the
+exact messages. Both sections share the sampling controls.
 
 ## API
 
@@ -70,29 +98,39 @@ last six runs listed with their settings, token counts, and time.
 {
   "prompt": "Invent a one-sentence tagline for a neighborhood coffee shop.",
   "system": "Answer in one sentence.",
-  "temperature": 0.8,
+  "temperature": 0,
   "topP": 0.9,
   "maxTokens": 64,
-  "seed": 7
+  "seed": 1
 }
 ```
 
 Only `prompt` is required. Defaults: temperature 0, top-p 0.9, max tokens 128, no seed.
 
-Returns:
+Returns `text`, `model`, `settings`, `tokens.prompt`, `tokens.completion`,
+`tokens.estimated`, and `durationMs`.
+
+Invalid settings return 400, for example
+`{ "error": "temperature must be a number between 0 and 2" }`.
+
+`POST /api/fundamentals/patterns`
 
 ```json
 {
-  "text": "\"Where every cup is a warm welcome to the neighborhood.\"",
-  "model": "llama3.2:1b",
-  "settings": { "prompt": "...", "temperature": 0, "topP": 0.9, "maxTokens": 32, "seed": 1 },
-  "tokens": { "prompt": 39, "completion": 13, "estimated": 30 },
-  "durationMs": 588
+  "task": "A customer wrote: \"The app crashed twice and nobody replied for three days.\" What is the sentiment, and what should support do next?",
+  "temperature": 0,
+  "topP": 0.9,
+  "maxTokens": 160,
+  "seed": 1
 }
 ```
 
-Invalid settings return 400 with a message, for example
-`{ "error": "temperature must be a number between 0 and 2" }`.
+`task` is required and at most 2000 characters. Sampling fields use the same rules as
+`/complete`.
+
+Returns `task`, `model`, the shared `settings`, and `runs`. Each run has `pattern`
+(`zero-shot`, `role`, `few-shot`, or `chain-of-thought`), `label`, `messages`, `text`,
+`tokens`, and `durationMs`.
 
 ## Test plan
 
@@ -104,17 +142,20 @@ Run from `backend/`:
 npm test
 ```
 
-None of these need Ollama. The completer tests replace the HTTP call with a fake that
+None of these need Ollama. The runner tests replace the HTTP call with a fake that
 returns a canned Ollama response.
 
 | File | What it checks |
 | --- | --- |
 | `tests/modules/fundamentals/sampling.test.js` | The estimate uses 4 characters per token and never reports 0; defaults are temperature 0, top-p 0.9, 128 tokens; system prompt and seed are kept; a missing prompt, temperature above 2, fractional max tokens, or a prompt over 4000 characters is rejected. |
-| `tests/modules/fundamentals/complete.test.js` | The request sent to Ollama has the right model, `stream: false`, and options (`temperature`, `top_p`, `num_predict`, `seed`); real token counts and duration are returned; an unreachable Ollama gives a clear error; the route passes validated settings to the completer and returns 400 for a bad temperature without calling it. |
+| `tests/modules/fundamentals/prompts.test.js` | Zero-shot is the task alone. Role adds a system prompt that names the `Sentiment:` shape. Few-shot has two assistant examples and the task as the last user turn, not inside an example. Chain-of-thought asks for step-by-step reasoning and an `Answer:` line. An unknown pattern and an empty task are rejected. All four patterns share the same task. |
+| `tests/modules/fundamentals/complete.test.js` | The request sent to Ollama has the right model, `stream: false`, and options. Real token counts and duration are returned. An unreachable Ollama gives a clear error. `/complete` passes validated settings through and returns 400 for a bad temperature without calling the model. `/patterns` calls the model four times with identical sampling options and the task as the last message. A missing task returns 400 and never calls the model. |
 
 ### Manual tests
 
 Start the backend and frontend and open **LLM Fundamentals**.
+
+Sampling:
 
 | Step | Expected result |
 | --- | --- |
@@ -126,6 +167,18 @@ Start the backend and frontend and open **LLM Fundamentals**.
 | Compare **estimate** with **prompt + completion** in the footer | They differ. In a verified run: 39 prompt + 13 completion tokens, estimate 30 |
 | Clear the prompt | **Run** is disabled |
 
+Prompt patterns. Set temperature to 0, seed to 1, and max tokens to at least 160 first.
+
+| Step | Expected result |
+| --- | --- |
+| Click **Compare patterns** on the default task | Four cards: Zero-shot, Role, Few-shot, Chain-of-thought. This takes longer than one run, because it is four generations |
+| Read Role and Few-shot | Both tend to use `Sentiment:` and `Next step:`. Zero-shot is a paragraph with no fixed shape |
+| Open **Prompt sent** on Few-shot | Two example exchanges appear before the task. The task is the last user message |
+| Open **Prompt sent** on Chain-of-thought | The system message asks for reasoning and a final `Answer:` line. The answer is longer than the others |
+| Click **Compare patterns** again without changing anything | The four answers match the first comparison, because temperature is 0 and the seed is set |
+| Raise temperature to 1.2, clear the seed, compare twice | Answers move around. You can no longer tell the prompt effect from the sampling effect |
+| Clear the task | **Compare patterns** is disabled |
+
 To check validation without the UI, from PowerShell (`curl.exe`, because plain `curl`
 there is an alias for a different command):
 
@@ -135,20 +188,25 @@ curl.exe -s -X POST http://localhost:5000/api/fundamentals/complete -H "Content-
 
 Expected output: `{"error":"temperature must be a number between 0 and 2"}  HTTP 400`.
 
+```powershell
+curl.exe -s -X POST http://localhost:5000/api/fundamentals/patterns -H "Content-Type: application/json" -d '{}' -w "  HTTP %{http_code}"
+```
+
+Expected output: `{"error":"Missing 'task'"}  HTTP 400`.
+
 ## Known limitations
 
-- **The token estimate is a guess.** It shows how wrong the rule of thumb is, but a real
-  tokenizer is a later slice.
-- **One request per run.** No side-by-side comparison yet, so repeat runs to compare.
+- **The token estimate is a guess.** It shows how wrong the rule of thumb is. A real tokenizer is a later slice.
+- **The four patterns are fixed.** You cannot edit the role text or the examples in the UI. They live in `prompts.js` so the comparison stays stable.
+- **Comparison is sequential.** Four calls, one after another, so a slow model makes this button wait.
 - **No streaming.** Each run waits for the full answer.
+- **No JSON validation yet.** Asking for a shape in the prompt is not the same as parsing it and retrying. That is the next slice.
 - **Only one model** at a time: the `CHAT_MODEL` set in `backend/.env`.
 
 ## Experiments
 
-1. Run the same prompt at temperature 0, 0.7, 1.2, and 2.0. Note where answers stop
-   making sense.
+1. Run the same tagline prompt at temperature 0, 0.7, 1.2, and 2.0. Note where answers stop making sense.
 2. Set top-p to 0.1 at temperature 1.2. Compare with top-p 1.0 at the same temperature.
-3. Paste a paragraph, a block of code, and a line of non-English text. Compare the
-   estimate with the real count for each.
-4. Try "Answer with only yes or no" as the system prompt, then ask something
-   open-ended. See how well a small model follows it.
+3. Compare patterns on the default complaint, then rewrite the task as a happy review. See whether few-shot still produces `Sentiment: positive`.
+4. Set max tokens to 30 and compare again. Chain-of-thought is the one that gets cut off, because the reasoning spends the budget before the answer.
+5. Try "Answer with only yes or no" as the system prompt on an open question. See how well a small model follows it.

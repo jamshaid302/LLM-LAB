@@ -7,6 +7,9 @@ as a module you pick from the sidebar.
 Everything runs locally against [Ollama](https://ollama.com) by default. No paid API
 keys are required.
 
+Interview questions and answers for every module, built and planned, are in
+[docs/interview-prep.md](docs/interview-prep.md).
+
 ## How the platform is organized
 
 ```
@@ -54,7 +57,7 @@ summarizes them.
 
 | Module                  | Status          | What it teaches                                                                      | Docs                                                 |
 | ----------------------- | --------------- | ------------------------------------------------------------------------------------ | ---------------------------------------------------- |
-| LLM Fundamentals        | **in progress** | Tokens, temperature, top-p, seed, and why the same prompt gives different answers    | [README](backend/src/modules/fundamentals/README.md) |
+| LLM Fundamentals        | **in progress** | Tokens, sampling, and prompt patterns (zero-shot, role, few-shot, chain-of-thought)  | [README](backend/src/modules/fundamentals/README.md) |
 | Providers & Cost        | planned         | Local and hosted models behind one interface, fallbacks, caching, token cost         | —                                                    |
 | RAG                     | **ready**       | Chunking, embeddings, similarity search, and grounding answers in your own documents | [README](backend/src/modules/rag/README.md)          |
 | Advanced RAG            | planned         | Hybrid search, reranking, and query rewriting, measured against basic RAG            | —                                                    |
@@ -271,12 +274,12 @@ is unavailable.
 ### Milestone 12 — LLM fundamentals · in progress
 
 Started early, ahead of the rest of this roadmap. The interview gap was being able to
-explain what an LLM is actually doing, so the sampling playground comes before more RAG
-work. Tokens, context windows, and prompt patterns still follow.
+explain what an LLM is actually doing.
 
-Done in this slice: temperature, top-p, seed, max tokens, and real token counts shown
-next to the `characters / 4` estimate. Still to come: few-shot and chain-of-thought
-prompts, and structured JSON output with validation.
+Done: temperature, top-p, seed, max tokens, real token counts next to the
+`characters / 4` estimate, and a four-way prompt comparison (zero-shot, role, few-shot,
+chain-of-thought) that holds sampling still. Still to come: structured JSON output
+with validation.
 
 ### Milestone 13 — Advanced topics · planned
 

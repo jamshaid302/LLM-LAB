@@ -1,23 +1,20 @@
 import { config } from "../../core/config.js";
+import { HttpError } from "../../core/http.js";
 
+import { buildAllPatterns } from "./prompts.js";
 import { estimateTokens, parseSampling } from "./sampling.js";
 
 /**
- * One non-streaming chat completion against Ollama, with the sampling settings and the
- * token counts the model actually used. `fetchImpl` is injectable so tests never call
- * a real model.
+ * Chat completions against Ollama. `fetchImpl` is injectable so tests never call a
+ * real model. `complete` is one prompt. `comparePatterns` runs the same task through
+ * every prompting pattern with the same sampling settings.
  */
-export function createCompleter({
+export function createChatRunner({
   fetchImpl = fetch,
   baseUrl = config.ollama.baseUrl,
   model = config.ollama.chatModel,
 } = {}) {
-  return async function complete(body) {
-    const settings = parseSampling(body);
-    const messages = [];
-    if (settings.system) messages.push({ role: "system", content: settings.system });
-    messages.push({ role: "user", content: settings.prompt });
-
+  async function run(settings, messages) {
     const options = {
       temperature: settings.temperature,
       top_p: settings.topP,
@@ -42,6 +39,7 @@ export function createCompleter({
 
     const data = await response.json();
     const text = data.message?.content ?? "";
+    const transcript = messages.map((message) => message.content).join("") + text;
 
     return {
       text,
@@ -50,10 +48,57 @@ export function createCompleter({
       tokens: {
         prompt: data.prompt_eval_count ?? null,
         completion: data.eval_count ?? null,
-        // Estimate covers the whole exchange, so it is comparable to prompt + completion.
-        estimated: estimateTokens(`${settings.system ?? ""}${settings.prompt}${text}`),
+        estimated: estimateTokens(transcript),
       },
       durationMs: typeof data.eval_duration === "number" ? Math.round(data.eval_duration / 1e6) : null,
     };
-  };
+  }
+
+  async function complete(body) {
+    const settings = parseSampling(body);
+    const messages = [];
+    if (settings.system) messages.push({ role: "system", content: settings.system });
+    messages.push({ role: "user", content: settings.prompt });
+    return run(settings, messages);
+  }
+
+  async function comparePatterns(body) {
+    const task = typeof body?.task === "string" ? body.task.trim() : "";
+    if (!task) throw new HttpError(400, "Missing 'task'");
+
+    // Reuse sampling validation. The task stands in for the prompt so temperature,
+    // top-p, seed, and max tokens are checked once and then shared by every pattern.
+    const settings = parseSampling({ ...body, prompt: task });
+    const runs = [];
+    for (const pattern of buildAllPatterns(task)) {
+      const result = await run(settings, pattern.messages);
+      runs.push({
+        pattern: pattern.id,
+        label: pattern.label,
+        messages: pattern.messages,
+        text: result.text,
+        tokens: result.tokens,
+        durationMs: result.durationMs,
+      });
+    }
+
+    return {
+      task,
+      model,
+      settings: {
+        temperature: settings.temperature,
+        topP: settings.topP,
+        maxTokens: settings.maxTokens,
+        ...(settings.seed !== undefined ? { seed: settings.seed } : {}),
+      },
+      runs,
+    };
+  }
+
+  return { complete, comparePatterns };
+}
+
+/** @deprecated Use createChatRunner().complete. Kept so older call sites stay valid. */
+export function createCompleter(options) {
+  return createChatRunner(options).complete;
 }

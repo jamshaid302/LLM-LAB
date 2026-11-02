@@ -12,7 +12,7 @@ export const modules = [
     group: "Foundations",
     status: "ready",
     description:
-      "Tokens, temperature, top-p, and seed. Change one setting and watch the answer change.",
+      "Tokens, sampling, and prompt patterns. Same task, four ways of asking.",
     Page: lazy(() => import("./fundamentals/FundamentalsPage.jsx")),
   },
   {

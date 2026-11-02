@@ -1,13 +1,22 @@
 import { config } from "../../core/config.js";
 
-import { createCompleter } from "./complete.js";
+import { createChatRunner } from "./complete.js";
 import { createFundamentalsRouter } from "./router.js";
 
-export function createFundamentalsModule({ complete = createCompleter() } = {}) {
+export function createFundamentalsModule({
+  runner = createChatRunner(),
+  complete,
+  comparePatterns,
+} = {}) {
+  const chat = {
+    complete: complete ?? runner.complete,
+    comparePatterns: comparePatterns ?? runner.comparePatterns,
+  };
+
   return {
     id: "fundamentals",
     name: "LLM Fundamentals",
-    router: createFundamentalsRouter(complete),
+    router: createFundamentalsRouter(chat),
     health() {
       return { model: config.ollama.chatModel };
     },
