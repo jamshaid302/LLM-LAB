@@ -31,7 +31,7 @@ docs/knowledge.txt
    → retrieval.js      drop any chunk below RAG_MIN_SCORE (default 0.5)
    → if none remain    return "I don't know" and do not call the model
    → prompt.js         number the kept chunks and name the source file
-   → LLM               answer from that context, or say "I don't know"
+   → POST /stream      send the answer one token at a time; Stop closes the stream
 ```
 
 The answer comes back with the chunks it kept, the ones it dropped, and a similarity
@@ -106,6 +106,11 @@ Returns:
 When every hit is below the cutoff, `refused` is true, `matchedSources` is empty, and
 `answer` is the refusal sentence. The model is not called.
 
+`POST /api/rag/stream` takes the same `{ "question" }` body and answers with
+Server-Sent Events: a `meta` event (kept and dropped chunks), then `token` events, then
+`done`. Closing the connection stops the model. A weak retrieval still skips the model
+and sends the refusal as one token.
+
 `POST /api/rag/reingest` rebuilds the store from `docs/knowledge.txt` and returns
 `{ "status": "ok", "chunks": 6 }`.
 
@@ -145,7 +150,8 @@ Start the backend and frontend, open **RAG**, and check each row.
 | Watch the backend log on a fresh Chroma | `[rag] 6 chunks embedded into chroma` |
 | Restart the API without changing `knowledge.txt` | `[rag] 6 chunks loaded from chroma` |
 | Read the line above the buttons | `Vector store: chroma` |
-| Ask "Where is the company gym?" | 3rd floor, open 24/7; top source scores about 0.8 |
+| Ask "Where is the company gym?" | The answer grows token by token. 3rd floor, open 24/7; top source scores about 0.8 |
+| Click **Stop** while an answer is still arriving | The partial text stays, with a Stopped line. The model call ends |
 | Ask "When are pets allowed in the office?" | Fridays only; top source scores about 0.7 |
 | Ask "What is the capital of Brazil?" | "I don't know", with no kept sources. Dropped scores are about 0.39. The model is not called |
 | Ask "Who is the CEO of the company?" | This one still reaches the model. Its top score was 0.566, just above the 0.5 cutoff |
@@ -164,8 +170,7 @@ Each is scheduled in the [roadmap](../../../../README.md#roadmap):
 - **The cutoff is a blunt threshold.** It refused Brazil (0.394) and kept every answerable question, including the leash question at 0.571. It did not refuse "Who is the CEO?" (0.566). Raising it further would start dropping real answers.
 - **Citations are unverified.** Nothing checks that a cited chunk supports the claim.
 - **One file of source metadata.** Chunks are labeled `knowledge.txt`. A folder of documents is not loaded yet.
-- **No conversation memory.** Each question is answered on its own.
-- **No streaming.** The UI waits for the whole answer.
+- **No conversation memory.** Each question is answered on its own. The tokens are not saved.
 - **`/api/rag/reingest` is unauthenticated.** Fine locally, not once deployed.
 
 ## Experiments

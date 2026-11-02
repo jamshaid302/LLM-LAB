@@ -281,14 +281,16 @@ document and its chunks together.
 
 ---
 
-## Planned — streaming chat
+## Built — streaming chat
 
 ### Why stream tokens?
 
-A full answer can take seconds. Streaming shows tokens as they arrive, which is what
-people expect from a chat product. The usual mechanism is Server-Sent Events: the
-Express response stays open and writes chunks. The React side appends them. You still
-need a way to cancel, and you still store the finished message when the stream ends.
+A full answer can take seconds. This app keeps the HTTP response open and writes
+Server-Sent Events: `token` frames as Ollama produces them, then `done`. The page
+appends each frame. Stop aborts that response, which aborts the Ollama request, and
+the tokens already on screen stay there. RAG uses the same stream after retrieval. A
+question below the cutoff still skips the model and sends the refusal as one token.
+The finished text is not stored. That is the conversations module.
 
 ---
 
@@ -450,5 +452,5 @@ playground that holds temperature and seed still and runs the same task as zero-
 role, few-shot, and chain-of-thought. A separate route parses `{ sentiment, nextStep }`,
 retries once with the validation error, and returns 422 with no object if both tries
 fail. The cutoff, the golden set, and a Chroma store are already in place. A restart
-loads the chunks instead of embedding them again. Next I would stream the answer and
-save the conversation."
+loads the chunks instead of embedding them again. Answers now arrive token by token,
+and Stop aborts the model call. Next I would save the conversation."

@@ -4,6 +4,7 @@ import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
+import { formatSse } from "../../../src/core/sse.js";
 import { DEFAULT_CORPUS, createRagService } from "../../../src/modules/rag/rag-service.js";
 
 /**
@@ -132,6 +133,37 @@ describe("createRagService", () => {
 
     expect(loaded.embedded).toBe(true);
     expect(store.replace).toHaveBeenCalledOnce();
+  });
+
+  it("streams tokens after sending the sources", async () => {
+    const streamChat = vi.fn(async ({ onToken }) => {
+      onToken("3rd");
+      onToken(" floor");
+    });
+    const rag = makeService({ streamChat });
+    await rag.ingest();
+    const chunks = [];
+
+    await rag.streamAnswer("gym", { write: (chunk) => chunks.push(chunk) });
+
+    expect(chunks[0]).toContain("event: meta");
+    expect(chunks[0]).toContain("knowledge.txt");
+    expect(chunks.join("")).toContain(formatSse("token", { text: "3rd" }));
+    expect(chunks.at(-1)).toContain('"finish":"stop"');
+    expect(streamChat).toHaveBeenCalledOnce();
+  });
+
+  it("refuses a weak match in the stream without calling the model", async () => {
+    const streamChat = vi.fn();
+    const rag = makeService({ streamChat, minScore: 1.01 });
+    await rag.ingest();
+    const chunks = [];
+
+    await rag.streamAnswer("Where is the gym?", { write: (chunk) => chunks.push(chunk) });
+
+    expect(chunks.join("")).toContain("don't know");
+    expect(chunks.at(-1)).toContain('"finish":"refused"');
+    expect(streamChat).not.toHaveBeenCalled();
   });
 
   it("fails clearly when the corpus file is missing", async () => {

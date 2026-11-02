@@ -57,8 +57,9 @@ export const modules = [
     id: "streaming",
     name: "Streaming Chat",
     group: "Chat & Memory",
-    status: "planned",
+    status: "ready",
     description: "Token-by-token responses over SSE, with cancellation and partial rendering.",
+    Page: lazy(() => import("./streaming/StreamingPage.jsx")),
   },
   {
     id: "conversations",

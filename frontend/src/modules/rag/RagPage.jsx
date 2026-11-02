@@ -1,5 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 
+import { readSse } from "../../lib/sse.js";
+
 export default function RagPage() {
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState("");
@@ -7,6 +9,7 @@ export default function RagPage() {
   const [report, setReport] = useState(null);
   const [storeName, setStoreName] = useState("");
   const chatEndRef = useRef(null);
+  const abortRef = useRef(null);
 
   useEffect(() => {
     fetch("/api/health")
@@ -19,41 +22,65 @@ export default function RagPage() {
     chatEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  function patchLast(patch) {
+    setMessages((prev) => {
+      const next = [...prev];
+      const last = next[next.length - 1];
+      if (!last || last.role !== "bot") return prev;
+      next[next.length - 1] = { ...last, ...patch(last) };
+      return next;
+    });
+  }
+
+  function stop() {
+    abortRef.current?.abort();
+  }
+
   async function handleSubmit(e) {
     e.preventDefault();
     const question = input.trim();
     if (!question || loading) return;
 
-    setMessages((prev) => [...prev, { role: "user", text: question }]);
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setMessages((prev) => [...prev, { role: "user", text: question }, { role: "bot", text: "" }]);
     setInput("");
     setLoading(true);
 
     try {
-      const res = await fetch("/api/rag/ask", {
+      const res = await fetch("/api/rag/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ question }),
+        signal: controller.signal,
       });
-      const data = await res.json();
+      if (!res.ok || !res.body) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
 
-      if (data.error) {
-        setMessages((prev) => [...prev, { role: "bot", text: `Error: ${data.error}` }]);
-      } else {
-        setMessages((prev) => [
-          ...prev,
-          {
-            role: "bot",
-            text: data.answer,
+      await readSse(res, (event, data) => {
+        if (event === "meta") {
+          patchLast(() => ({
             sources: data.matchedSources,
             dropped: data.droppedSources,
             refused: data.refused,
-          },
-        ]);
-      }
+          }));
+        } else if (event === "token") {
+          patchLast((last) => ({ text: last.text + data.text }));
+        } else if (event === "error") {
+          patchLast((last) => ({ text: last.text || `Error: ${data.error}` }));
+        }
+      });
     } catch (err) {
-      setMessages((prev) => [...prev, { role: "bot", text: `Request failed: ${err.message}` }]);
+      if (err.name === "AbortError") {
+        patchLast((last) => ({ stopped: true, text: last.text || "Stopped." }));
+      } else {
+        patchLast((last) => ({ text: last.text || `Request failed: ${err.message}` }));
+      }
     } finally {
       setLoading(false);
+      abortRef.current = null;
     }
   }
 
@@ -132,9 +159,10 @@ export default function RagPage() {
                 ))}
               </div>
             )}
+            {m.stopped && m.text !== "Stopped." && <div style={styles.stopped}>Stopped</div>}
           </div>
         ))}
-        {loading && <div style={styles.thinking}>Thinking...</div>}
+        {loading && messages.at(-1)?.text === "" && <div style={styles.thinking}>Waiting for the first token...</div>}
         <div ref={chatEndRef} />
       </div>
 
@@ -146,9 +174,15 @@ export default function RagPage() {
           style={styles.input}
           disabled={loading}
         />
-        <button type="submit" style={styles.sendBtn} disabled={loading}>
-          Ask
-        </button>
+        {loading ? (
+          <button type="button" onClick={stop} style={styles.stopBtn}>
+            Stop
+          </button>
+        ) : (
+          <button type="submit" style={styles.sendBtn}>
+            Ask
+          </button>
+        )}
       </form>
     </div>
   );
@@ -182,6 +216,16 @@ const styles = {
   botLabel: { color: "#e2e8f0", fontWeight: 600 },
   sources: { fontSize: "0.8rem", color: "#94a3b8", marginTop: 4, whiteSpace: "pre-wrap" },
   thinking: { color: "#64748b", fontStyle: "italic" },
+  stopped: { color: "#94a3b8", fontSize: "0.8rem", marginTop: 4 },
+  stopBtn: {
+    padding: "10px 16px",
+    borderRadius: 6,
+    border: "1px solid #f87171",
+    background: "#1e293b",
+    color: "#fca5a5",
+    fontWeight: 600,
+    cursor: "pointer",
+  },
   form: { display: "flex", gap: 8 },
   input: {
     flex: 1,

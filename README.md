@@ -63,7 +63,7 @@ summarizes them.
 | Advanced RAG            | planned   | Hybrid search, reranking, and query rewriting, measured against basic RAG            | —                                                    |
 | Semantic Search         | planned   | Embeddings outside chat: search, deduplication, clustering, recommendations          | —                                                    |
 | Document Pipeline       | planned   | PDF and Markdown upload, parsing, and embedding as background jobs                   | —                                                    |
-| Streaming Chat          | planned   | Token-by-token answers over Server-Sent Events, with cancellation                    | —                                                    |
+| Streaming Chat          | **ready** | Token-by-token answers over Server-Sent Events, with cancellation                    | [README](backend/src/modules/streaming/README.md)    |
 | Conversations           | planned   | Threads and messages in MongoDB, summarizing long history                            | —                                                    |
 | LLM Evaluation          | planned   | Golden datasets, retrieval metrics, and LLM-as-judge scoring                         | —                                                    |
 | Hallucination Detection | planned   | Checking that answers and citations are supported by the sources                     | —                                                    |
@@ -211,12 +211,15 @@ Recall@3 stayed 1.0. The gym chunk still scored 0.774.
 
 Still to come: loading more than one file.
 
-### Milestone 3 — Streaming and conversations · planned
+### Milestone 3 — Streaming and conversations · in progress
 
-The two things that make it feel like a real product, and the biggest MERN gap: the app
-currently stores nothing.
+Done: token-by-token answers over Server-Sent Events, with a Stop button. Streaming Chat
+is the plain demo. The RAG page uses the same mechanism, so a grounded answer also
+appears as it is written. Closing the connection aborts the Ollama call. Nothing is
+saved yet.
 
-- Token-by-token streaming over Server-Sent Events, with cancellation.
+Still to come:
+
 - Threads and messages persisted in MongoDB.
 - Context windows in practice: summarizing or trimming history when a conversation grows
   past what the model can read.
@@ -280,8 +283,7 @@ doing was the interview gap.
 
 Done: temperature, top-p, seed, max tokens, real token counts next to the
 `characters / 4` estimate, a four-way prompt comparison, and structured JSON with one
-retry. A reply that still fails validation comes back as 422 with no object. Next is
-RAG hardening: a similarity cutoff, source metadata, and a scored question set.
+retry. A reply that still fails validation comes back as 422 with no object.
 
 ### Milestone 13 — Advanced topics · planned
 

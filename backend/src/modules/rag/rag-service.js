@@ -5,7 +5,9 @@ import { fileURLToPath } from "node:url";
 import { createHash } from "node:crypto";
 
 import { config } from "../../core/config.js";
+import { streamOllamaChat } from "../../core/ollama-stream.js";
 import { createChatModel, createEmbeddings } from "../../core/ollama.js";
+import { formatSse } from "../../core/sse.js";
 
 import { splitText } from "./chunking.js";
 import { NO_ANSWER, buildRagPrompt } from "./prompt.js";
@@ -30,6 +32,12 @@ export function createRagService({
   store,
   storeKind = "memory",
   chromaUrl = config.rag.chromaUrl,
+  streamChat = (args) =>
+    streamOllamaChat({
+      baseUrl: config.ollama.baseUrl,
+      model: config.ollama.chatModel,
+      ...args,
+    }),
 } = {}) {
   const vectorStore =
     store ?? createVectorStore({ kind: storeKind, embeddings, chromaUrl });
@@ -81,16 +89,19 @@ export function createRagService({
     }));
   }
 
-  async function ask(question) {
+  async function prepare(question) {
     const hits = await retrieve(question);
     const { matched, dropped } = applyCutoff(hits, minScore);
+    const matchedSources = matched.map(present);
+    const droppedSources = dropped.map(present);
 
     if (matched.length === 0) {
       return {
-        answer: NO_ANSWER,
         refused: true,
-        matchedSources: [],
-        droppedSources: dropped.map(present),
+        answer: NO_ANSWER,
+        matchedSources,
+        droppedSources,
+        prompt: null,
       };
     }
 
@@ -98,14 +109,46 @@ export function createRagService({
       pageContent: hit.text,
       metadata: { source: hit.source },
     }));
-    const answer = await llm.invoke(buildRagPrompt({ question, docs }));
-
     return {
-      answer,
       refused: false,
-      matchedSources: matched.map(present),
-      droppedSources: dropped.map(present),
+      answer: null,
+      matchedSources,
+      droppedSources,
+      prompt: buildRagPrompt({ question, docs }),
     };
+  }
+
+  async function ask(question) {
+    const prepared = await prepare(question);
+    const { prompt, ...result } = prepared;
+    if (prepared.refused) return result;
+    return { ...result, answer: await llm.invoke(prompt) };
+  }
+
+  async function streamAnswer(question, { signal, write }) {
+    const prepared = await prepare(question);
+    write(
+      formatSse("meta", {
+        refused: prepared.refused,
+        matchedSources: prepared.matchedSources,
+        droppedSources: prepared.droppedSources,
+      }),
+    );
+
+    if (prepared.refused) {
+      write(formatSse("token", { text: prepared.answer }));
+      write(formatSse("done", { finish: "refused" }));
+      return;
+    }
+
+    await streamChat({
+      messages: [{ role: "user", content: prepared.prompt }],
+      signal,
+      onToken(token) {
+        write(formatSse("token", { text: token }));
+      },
+    });
+    write(formatSse("done", { finish: "stop" }));
   }
 
   async function evaluate() {
@@ -121,6 +164,7 @@ export function createRagService({
     ingest,
     load,
     ask,
+    streamAnswer,
     retrieve,
     evaluate,
     get chunkCount() {
