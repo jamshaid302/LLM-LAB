@@ -19,20 +19,26 @@ export function tokenFromOllamaLine(line) {
   };
 }
 
-/** One non-streaming reply. Used for the conversation summary, which is itself a model call. */
-export async function completeOllamaChat({
+/** One non-streaming reply, including the token counts Ollama reports for that call. */
+export async function completeOllamaChatResult({
   fetchImpl = fetch,
   baseUrl = config.ollama.baseUrl,
   model = config.ollama.chatModel,
   messages,
   signal,
+  options,
 } = {}) {
   let response;
   try {
     response = await fetchImpl(`${baseUrl}/api/chat`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, messages, stream: false }),
+      body: JSON.stringify({
+        model,
+        messages,
+        stream: false,
+        ...(options ? { options } : {}),
+      }),
       signal,
     });
   } catch (cause) {
@@ -45,7 +51,21 @@ export async function completeOllamaChat({
   }
 
   const data = await response.json();
-  return data.message?.content ?? "";
+  return {
+    text: data.message?.content ?? "",
+    promptTokens: countOrNull(data.prompt_eval_count),
+    completionTokens: countOrNull(data.eval_count),
+  };
+}
+
+/** One non-streaming reply. Used for the conversation summary, which is itself a model call. */
+export async function completeOllamaChat(args) {
+  const result = await completeOllamaChatResult(args);
+  return result.text;
+}
+
+function countOrNull(value) {
+  return Number.isInteger(value) && value >= 0 ? value : null;
 }
 
 /**

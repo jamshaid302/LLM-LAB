@@ -217,20 +217,23 @@ MongoDB should receive a validated object, the same as any other Express route.
 
 ---
 
-## Planned — providers and cost
+## Built — providers and cost
 
-### How do you support more than one model provider?
+### How do you support more than one model?
 
-Put a small interface in front of them: `complete({ messages, temperature, maxTokens })`.
-Ollama, OpenAI, and Anthropic each get an adapter. The rest of the app never imports a
-vendor SDK. You can then fall back when one provider errors, and you can swap a cheap
-model onto easy routes with a config change.
+In this project the chat call is `completeOllamaChatResult`. The request names the model.
+`llama3.2:1b` and `qwen2.5:7b` both go through that function, and conversation summaries
+use it too. The rest of a hosted setup would be a second function with the same return
+shape. That second function is not built. There is no fallback when a call fails, and no
+cache.
 
 ### How do you track cost?
 
-Record model name, prompt tokens, completion tokens, and latency on every call. Multiply
-by the published price. Show it per request and per user. Alert when a route's average
-tokens jumps, because that usually means a prompt started including too much history.
+Each call on the Providers page stores the model, prompt tokens, completion tokens, and
+latency. Cost is `tokens / 1,000,000 × rate`. Both local rates are $0. The same counts
+are also multiplied by a sample hosted rate, $0.15 per million input tokens and $0.60
+per million output tokens, and the page says that figure was not billed. The log is in
+memory, so a restart clears it. Other pages do not all write this log yet.
 
 ---
 
@@ -467,4 +470,5 @@ loads the chunks instead of embedding them again. Answers arrive token by token,
 Stop aborts the model call. Threads and messages live in MongoDB, and the recent turns
 go into the next prompt along with any matching knowledge-base chunk. When the thread
 grows past that window, the older turns are summarized and the summary is what the
-model sees for them."
+model sees for them. A separate page runs the same chat call against either local model
+and records the tokens, the latency, and a $0 price."

@@ -19,9 +19,9 @@ export const modules = [
     id: "providers",
     name: "Providers & Cost",
     group: "Foundations",
-    status: "planned",
-    description:
-      "Local and hosted models behind one interface, with fallbacks, caching, and token accounting.",
+    status: "ready",
+    description: "Two local models behind one chat call, with tokens, latency, and a $0 price.",
+    Page: lazy(() => import("./providers/ProvidersPage.jsx")),
   },
   {
     id: "rag",

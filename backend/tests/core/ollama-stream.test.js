@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { streamOllamaChat, takeCompleteLines, tokenFromOllamaLine } from "../../src/core/ollama-stream.js";
+import {
+  completeOllamaChat,
+  completeOllamaChatResult,
+  streamOllamaChat,
+  takeCompleteLines,
+  tokenFromOllamaLine,
+} from "../../src/core/ollama-stream.js";
 import { consumeSseBuffer, formatSse } from "../../src/core/sse.js";
 
 function ollamaLine(text, done = false) {
@@ -28,6 +34,26 @@ describe("formatSse and consumeSseBuffer", () => {
     const { events, rest } = consumeSseBuffer("", frame);
     expect(rest).toBe("");
     expect(events).toEqual([{ event: "token", data: JSON.stringify({ text: "Hi" }) }]);
+  });
+});
+
+describe("completeOllamaChat", () => {
+  it("returns the text, and the result helper keeps the token counts", async () => {
+    const fetchImpl = async () => ({
+      ok: true,
+      json: async () => ({
+        message: { content: "pong" },
+        prompt_eval_count: 11,
+        eval_count: 2,
+      }),
+    });
+
+    await expect(completeOllamaChat({ fetchImpl, messages: [] })).resolves.toBe("pong");
+    await expect(completeOllamaChatResult({ fetchImpl, messages: [] })).resolves.toMatchObject({
+      text: "pong",
+      promptTokens: 11,
+      completionTokens: 2,
+    });
   });
 });
 

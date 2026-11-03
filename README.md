@@ -77,7 +77,7 @@ summarizes them.
 | Module                  | Status    | What it teaches                                                                      | Docs                                                  |
 | ----------------------- | --------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------- |
 | LLM Fundamentals        | **ready** | Tokens, sampling, prompt patterns, and validated JSON output                         | [README](backend/src/modules/fundamentals/README.md)  |
-| Providers & Cost        | planned   | Local and hosted models behind one interface, fallbacks, caching, token cost         | —                                                     |
+| Providers & Cost        | **ready** | Two local models behind one chat call, with tokens, latency, and a $0 price          | [README](backend/src/modules/providers/README.md)     |
 | RAG                     | **ready** | Chunking, embeddings, similarity search, and grounding answers in your own documents | [README](backend/src/modules/rag/README.md)           |
 | Advanced RAG            | planned   | Hybrid search, reranking, and query rewriting, measured against basic RAG            | —                                                     |
 | Semantic Search         | planned   | Embeddings outside chat: search, deduplication, clustering, recommendations          | —                                                     |
@@ -246,12 +246,18 @@ Still to come:
 
 - A real user concept, hardened into auth in Milestone 6.
 
-### Milestone 4 — Providers and cost · planned
+### Milestone 4 — Providers and cost · in progress
 
-- One provider interface covering Ollama plus a hosted API, with fallback and retry.
-- Token counting, per-request cost, and a latency budget.
+Done: one non-streaming chat call, shared with conversation summaries. A request picks
+`llama3.2:1b` or `qwen2.5:7b`. The reply records prompt tokens, completion tokens,
+latency, and cost. Both local rates are $0 per million. The same counts are also priced
+at a sample hosted rate of $0.15 in and $0.60 out, and that figure is labeled as not billed.
+
+Still to come:
+
+- A hosted adapter, with fallback and retry.
 - Caching, including semantic caching of similar questions.
-- Choosing a cheap model for easy requests and an expensive one only when needed.
+- Choosing the small model for an easy request and the larger one only when needed.
 
 ### Milestone 5 — Document pipeline · planned
 

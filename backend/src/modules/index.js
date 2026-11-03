@@ -2,6 +2,7 @@ import { config } from "../core/config.js";
 
 import { createConversationsModule } from "./conversations/index.js";
 import { createFundamentalsModule } from "./fundamentals/index.js";
+import { createProvidersModule } from "./providers/index.js";
 import { applyCutoff } from "./rag/retrieval.js";
 import { createRagService } from "./rag/rag-service.js";
 import { createRagModule } from "./rag/index.js";
@@ -17,6 +18,7 @@ export function createModules() {
 
   return [
     createFundamentalsModule(),
+    createProvidersModule(),
     createRagModule({ service: ragService }),
     createStreamingModule(),
     createConversationsModule({
