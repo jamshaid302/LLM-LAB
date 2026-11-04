@@ -1,17 +1,19 @@
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
 import { formatSse } from "../../../src/core/sse.js";
+import { readCorpus } from "../../../src/modules/rag/corpus.js";
 import { DEFAULT_CORPUS, createRagService } from "../../../src/modules/rag/rag-service.js";
 
 /**
  * Deterministic stand-in for a real embedding model: each text becomes a vector of
  * keyword counts, so similarity search is predictable and runs with no network.
  */
-const KEYWORDS = ["gym", "pets", "vector", "ollama"];
+const KEYWORDS = ["gym", "pets", "vector", "ollama", "lantern"];
 
 const fakeEmbeddings = {
   embedDocuments: async (texts) => texts.map(embedOne),
@@ -169,5 +171,31 @@ describe("createRagService", () => {
   it("fails clearly when the corpus file is missing", async () => {
     const rag = makeService({ corpusPath: path.join("does", "not", "exist.txt") });
     await expect(rag.ingest()).rejects.toThrow(/ENOENT/);
+  });
+
+  it("labels each chunk with the file it came from", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "rag-corpus-"));
+    await fs.writeFile(path.join(dir, "knowledge.txt"), "The gym is on the 3rd floor.");
+    await fs.writeFile(path.join(dir, "office.txt"), "The visitor wifi password is lantern-42.");
+    const rag = makeService({ corpusPath: dir, topK: 1 });
+    await rag.ingest();
+
+    const gym = await rag.ask("gym");
+    const wifi = await rag.ask("lantern");
+
+    expect(gym.matchedSources[0].source).toBe("knowledge.txt");
+    expect(wifi.matchedSources[0].source).toBe("office.txt");
+    expect(wifi.matchedSources[0].text).toContain("lantern-42");
+  });
+
+  it("changes the corpus hash when a second file is added", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "rag-corpus-"));
+    await fs.writeFile(path.join(dir, "knowledge.txt"), "The gym is on the 3rd floor.");
+    const first = await readCorpus(dir);
+    await fs.writeFile(path.join(dir, "office.txt"), "The visitor wifi password is lantern-42.");
+    const second = await readCorpus(dir);
+
+    expect(second.hash).not.toBe(first.hash);
+    expect(second.documents.map((document) => document.source)).toEqual(["knowledge.txt", "office.txt"]);
   });
 });

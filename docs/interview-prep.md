@@ -64,8 +64,9 @@ already failing for a clear reason.
 
 Retrieval-augmented generation. You embed your documents, embed the question, take the
 nearest chunks, and put those chunks in the prompt. The model answers from that text
-instead of from memory. In this project, `POST /api/rag/ask` does that over
-`knowledge.txt` and returns the answer plus the chunks and their similarity scores.
+instead of from memory. In this project, `POST /api/rag/ask` does that over every
+`.txt` file in the docs folder and returns the answer plus the chunks, their file
+names, and their similarity scores.
 
 ### Why chunk the documents?
 
@@ -84,13 +85,14 @@ not truth. It only says "this text is near the question."
 
 ### How did you decide the similarity cutoff?
 
-I measured it. Ten questions whose answers are in the file all retrieved the right chunk,
-with top scores from 0.571 to 0.795. "What is the capital of Brazil?" scored 0.394, so a
-cutoff of 0.5 refuses it and never calls the model. Recall@3 stayed 1.0 after the
-cutoff, and mean reciprocal rank stayed 1.0, so the right chunk was still rank 1.
-"Who is the CEO?" scored 0.566 and still gets through. I did not raise the cutoff,
-because the leash question only scored 0.571 and a higher line would drop a real answer.
-That tradeoff is in `eval/baseline.json`.
+I measured it. Eleven questions whose answers are in the files all retrieved the right
+chunk, with top scores from 0.571 to 0.843. "What is the capital of Brazil?" scored
+0.394, so a cutoff of 0.5 refuses it and never calls the model. Recall@3 stayed 1.0
+after the cutoff, and mean reciprocal rank stayed 1.0, so the right chunk was still
+rank 1. "Who is the CEO?" scored 0.566 and still gets through. I did not raise the
+cutoff, because the leash question only scored 0.571 and a higher line would drop a
+real answer. That tradeoff is in `eval/baseline.json`. Adding `office.txt` did not
+move the original ten scores.
 
 ### Where do the vectors live?
 
@@ -98,13 +100,15 @@ In Chroma, a separate vector database running in Docker. The original in-memory 
 is still in the code and tests still use it. `RAG_STORE=memory` switches back to it.
 Chroma stores cosine distance, so the app converts that to similarity before the 0.5
 cutoff. After the swap, recall@3 was still 1.0 and the gym chunk still scored 0.774.
-Restarting the API, and restarting the Chroma container, both loaded the six chunks
-without embedding them again.
+Restarting the API, and restarting the Chroma container, both load the chunks without
+embedding them again when the folder hash matches. The folder is `knowledge.txt` and
+`office.txt`, seven chunks. Each chunk is labeled with the file it came from, so the
+wifi password cites `office.txt` and the gym cites `knowledge.txt`.
 
 ### What is still missing?
 
-Citations are not checked against the chunk text. The corpus is still one file.
-Streaming and saved conversations are the next product step, not another change to the cutoff.
+Citations are not checked against the chunk text. The loader reads `.txt` files only.
+A PDF is still the document pipeline.
 
 ### Where does RAG show up in a MERN product?
 

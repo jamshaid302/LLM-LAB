@@ -91,7 +91,7 @@ export default function RagPage() {
       const data = await res.json();
       setMessages((prev) => [
         ...prev,
-        { role: "bot", text: `✅ Re-ingested ${data.chunks} chunks from knowledge.txt` },
+        { role: "bot", text: `✅ Re-ingested ${data.chunks} chunks from the docs folder` },
       ]);
     } catch (err) {
       setMessages((prev) => [...prev, { role: "bot", text: `Re-ingest failed: ${err.message}` }]);

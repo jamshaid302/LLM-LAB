@@ -9,7 +9,8 @@
     { "question": "What happens if an expense report is late?", "expect": "manager approval" },
     { "question": "What does the MERN stack consist of?", "expect": "MongoDB" },
     { "question": "What is retrieval-augmented generation?", "expect": "knowledge base" },
-    { "question": "What port does Ollama listen on?", "expect": "11434" }
+    { "question": "What port does Ollama listen on?", "expect": "11434" },
+    { "question": "What is the visitor wifi password?", "expect": "lantern-42" }
   ],
   "unanswerable": [
     { "question": "What is the capital of Brazil?" },

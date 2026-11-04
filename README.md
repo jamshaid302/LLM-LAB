@@ -53,7 +53,7 @@ strategy, agent loop) stays inside its own folder so it can be read on its own.
 
 They answer different questions.
 
-**Chroma** is the vector database. It stores the embeddings of `knowledge.txt`. A question
+**Chroma** is the vector database. It stores the embeddings of the `.txt` files in the RAG docs folder. A question
 is embedded the same way, and Chroma returns the nearest chunks. That is how the app
 finds "the gym is on the 3rd floor" when those words are not in the chat.
 
@@ -215,7 +215,7 @@ missing from self-taught AI portfolios, and the part interviewers probe hardest.
 research-flavored topics come last: they are valuable to understand, but fine-tuning and
 multi-agent orchestration are rarely what a full-stack role actually needs.
 
-### Milestone 2 — RAG hardening and measurement · in progress
+### Milestone 2 — RAG hardening and measurement · done
 
 Done: a similarity cutoff at 0.5, the file name on every chunk, and a 12-question set
 scored with recall@k and MRR. On `nomic-embed-text`, recall@3 stayed 1.0 after the
@@ -228,7 +228,11 @@ original in-memory store is still in `store.js` and still selected by `RAG_STORE
 With `RAG_STORE=chroma`, a restart loads the six chunks and does not embed them again.
 Recall@3 stayed 1.0. The gym chunk still scored 0.774.
 
-Still to come: loading more than one file.
+Done after that: every `.txt` file in `docs/` is loaded, and each chunk keeps its own file
+name. `office.txt` holds the visitor wifi password. On `nomic-embed-text` that question
+scored 0.843, recall@3 stayed 1.0, and the original ten scores did not move. The folder
+hash is what Chroma compares on restart. A second file changes it, so the chunks are
+embedded again. Seven chunks in total.
 
 ### Milestone 3 — Streaming and conversations · in progress
 

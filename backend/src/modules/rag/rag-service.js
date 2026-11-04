@@ -2,20 +2,20 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { createHash } from "node:crypto";
-
 import { config } from "../../core/config.js";
 import { streamOllamaChat } from "../../core/ollama-stream.js";
 import { createChatModel, createEmbeddings } from "../../core/ollama.js";
 import { formatSse } from "../../core/sse.js";
 
 import { splitText } from "./chunking.js";
+import { readCorpus } from "./corpus.js";
 import { NO_ANSWER, buildRagPrompt } from "./prompt.js";
 import { applyCutoff, scoreRetrieval } from "./retrieval.js";
 import { createVectorStore } from "./store.js";
 
 const moduleDir = path.dirname(fileURLToPath(import.meta.url));
-export const DEFAULT_CORPUS = path.join(moduleDir, "docs", "knowledge.txt");
+export const DOCS_DIR = path.join(moduleDir, "docs");
+export const DEFAULT_CORPUS = path.join(DOCS_DIR, "knowledge.txt");
 export const QUESTIONS_PATH = path.join(moduleDir, "eval", "questions.json");
 
 /**
@@ -25,7 +25,7 @@ export const QUESTIONS_PATH = path.join(moduleDir, "eval", "questions.json");
 export function createRagService({
   llm = createChatModel(),
   embeddings = createEmbeddings(),
-  corpusPath = DEFAULT_CORPUS,
+  corpusPath = DOCS_DIR,
   questionsPath = QUESTIONS_PATH,
   topK = config.rag.topK,
   minScore = config.rag.minScore,
@@ -42,11 +42,10 @@ export function createRagService({
   const vectorStore =
     store ?? createVectorStore({ kind: storeKind, embeddings, chromaUrl });
   let chunkCount = 0;
-  const sourceName = path.basename(corpusPath);
 
   async function sync({ force }) {
-    const raw = await fs.readFile(corpusPath, "utf-8");
-    const hash = createHash("sha256").update(raw).digest("hex");
+    const corpus = await readCorpus(corpusPath);
+    const hash = corpus.hash;
 
     if (!force) {
       const existing = await vectorStore.status();
@@ -58,9 +57,13 @@ export function createRagService({
       }
     }
 
-    const chunks = await splitText(raw);
-    for (const chunk of chunks) {
-      chunk.metadata = { ...chunk.metadata, source: sourceName };
+    const chunks = [];
+    for (const document of corpus.documents) {
+      const pieces = await splitText(document.text);
+      for (const chunk of pieces) {
+        chunk.metadata = { ...chunk.metadata, source: document.source };
+        chunks.push(chunk);
+      }
     }
 
     // Replace rather than append, so a second ingest never duplicates entries.
@@ -85,7 +88,7 @@ export function createRagService({
     return hits.map((hit) => ({
       text: hit.text,
       score: hit.score,
-      source: hit.source ?? sourceName,
+      source: hit.source ?? null,
     }));
   }
 
