@@ -42,6 +42,46 @@ export function buildSummaryMessages({ previousSummary, messages }) {
   ];
 }
 
+/**
+ * The model call that turns a follow-up into a search query. The reply prompt still
+ * uses the original message.
+ */
+export function buildRewriteMessages({ summary, messages, question }) {
+  const lines = (messages ?? []).map((message) => {
+    const speaker = message.role === "user" ? "User" : "Assistant";
+    return `${speaker}: ${message.content}`;
+  });
+  const prior = [
+    summary ? `Summary:\n${summary}` : "",
+    lines.length ? `Earlier messages:\n${lines.join("\n")}` : "",
+    `Latest message:\n${question}`,
+  ].filter(Boolean);
+
+  return [
+    {
+      role: "system",
+      content: [
+        "Rewrite the latest user message as one search query for a document database.",
+        "Replace words like it, that, or the password with the specific subject named in the earlier messages or the summary.",
+        "Do not answer the question.",
+        "Reply with the search query only, on one line.",
+      ].join(" "),
+    },
+    { role: "user", content: prior.join("\n\n") },
+  ];
+}
+
+/** Keep a one-line query. A blank or essay-length rewrite falls back to the original message. */
+export function searchQueryFromRewrite(text, fallback) {
+  const line = String(text ?? "")
+    .trim()
+    .split("\n")[0]
+    .trim()
+    .replace(/^["']|["']$/g, "");
+  if (!line || line.length > 300) return fallback;
+  return line;
+}
+
 /** Keep the newest turns, and don't start the window on an orphaned assistant reply. */
 export function recentTurns(messages, limit) {
   const slice = messages.slice(-limit);

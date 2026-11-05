@@ -3,17 +3,21 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 
+import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 
+import { createApp } from "../../../src/app.js";
 import { formatSse } from "../../../src/core/sse.js";
-import { readCorpus } from "../../../src/modules/rag/corpus.js";
+import { documentName, readCorpus } from "../../../src/modules/rag/corpus.js";
+import { createRagModule } from "../../../src/modules/rag/index.js";
+import { createMemoryStore } from "../../../src/modules/rag/store.js";
 import { DEFAULT_CORPUS, createRagService } from "../../../src/modules/rag/rag-service.js";
 
 /**
  * Deterministic stand-in for a real embedding model: each text becomes a vector of
  * keyword counts, so similarity search is predictable and runs with no network.
  */
-const KEYWORDS = ["gym", "pets", "vector", "ollama", "lantern"];
+const KEYWORDS = ["gym", "pets", "vector", "ollama", "lantern", "maple"];
 
 const fakeEmbeddings = {
   embedDocuments: async (texts) => texts.map(embedOne),
@@ -168,6 +172,206 @@ describe("createRagService", () => {
     expect(streamChat).not.toHaveBeenCalled();
   });
 
+  it("saves a markdown upload and retrieves that file by name", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "rag-upload-"));
+    await fs.writeFile(path.join(dir, "knowledge.txt"), "The gym is on the 3rd floor.");
+    const rag = makeService({ corpusPath: dir, topK: 1 });
+    const app = createApp([createRagModule({ service: rag })]);
+
+    const res = await request(app).post("/api/rag/documents").send({
+      filename: "parking.md",
+      text: "The visitor parking code is maple-17.",
+    });
+
+    expect(res.status).toBe(202);
+    expect(res.body).toMatchObject({ filename: "parking.md", status: "queued" });
+    expect(await fs.readFile(path.join(dir, "parking.md"), "utf-8")).toContain("maple-17");
+    await rag.whenIdle();
+
+    const found = await rag.ask("maple");
+    expect(found.matchedSources[0].source).toBe("parking.md");
+    expect(found.matchedSources[0].text).toContain("maple-17");
+  });
+
+  it("embeds only the uploaded file when the rest of the corpus is already stored", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "rag-upload-"));
+    await fs.writeFile(path.join(dir, "knowledge.txt"), "The gym is on the 3rd floor.");
+    const embedded = [];
+    const counting = {
+      embedDocuments: async (texts) => {
+        embedded.push(texts);
+        return texts.map(embedOne);
+      },
+      embedQuery: fakeEmbeddings.embedQuery,
+    };
+    const rag = makeService({
+      corpusPath: dir,
+      embeddings: counting,
+      store: createMemoryStore(counting),
+      topK: 1,
+      minScore: 0.51,
+    });
+    await rag.ingest();
+    embedded.length = 0;
+
+    await rag.addDocument({ filename: "parking.md", text: "The visitor parking code is maple-17." });
+    expect(embedded).toEqual([["The visitor parking code is maple-17."]]);
+    expect((await rag.ask("gym")).matchedSources[0].source).toBe("knowledge.txt");
+
+    embedded.length = 0;
+    await rag.removeDocument("parking.md");
+    expect(embedded).toEqual([]);
+    expect((await rag.ask("maple")).refused).toBe(true);
+    expect((await rag.ask("gym")).matchedSources[0].source).toBe("knowledge.txt");
+  });
+
+  it("deletes an uploaded file and keeps the sample files", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "rag-upload-"));
+    await fs.writeFile(path.join(dir, "knowledge.txt"), "The gym is on the 3rd floor.");
+    const rag = makeService({ corpusPath: dir, topK: 3, minScore: 0.51 });
+    const app = createApp([createRagModule({ service: rag })]);
+    await rag.addDocument({ filename: "parking.md", text: "The visitor parking code is maple-17." });
+
+    const listed = await request(app).get("/api/rag/documents");
+    expect(listed.body.documents).toEqual([
+      { name: "knowledge.txt", removable: false },
+      { name: "parking.md", removable: true },
+    ]);
+
+    const removed = await request(app).delete("/api/rag/documents/parking.md");
+    expect(removed.status).toBe(200);
+    expect(removed.body.filename).toBe("parking.md");
+    await expect(fs.access(path.join(dir, "parking.md"))).rejects.toThrow();
+
+    const after = await rag.ask("maple");
+    expect(after.refused).toBe(true);
+    expect(after.matchedSources).toEqual([]);
+
+    const blocked = await request(app).delete("/api/rag/documents/knowledge.txt");
+    expect(blocked.status).toBe(400);
+    expect(await fs.readFile(path.join(dir, "knowledge.txt"), "utf-8")).toContain("gym");
+  });
+
+  it("rejects a bad upload before writing a file", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "rag-upload-"));
+    await fs.writeFile(path.join(dir, "knowledge.txt"), "The gym is on the 3rd floor.");
+    const rag = makeService({ corpusPath: dir });
+
+    await expect(rag.addDocument({ filename: "../parking.md", text: "secret" })).rejects.toMatchObject({ status: 400 });
+    await expect(rag.addDocument({ filename: "notes.docx", text: "secret" })).rejects.toMatchObject({ status: 400 });
+    await expect(rag.addDocument({ filename: "notes.pdf", text: "secret" })).rejects.toMatchObject({ status: 400 });
+    await expect(rag.addDocument({ filename: "blank.pdf", data: pdfWithText("").toString("base64") })).rejects.toMatchObject({
+      status: 400,
+    });
+    await expect(rag.addDocument({ filename: "notes.md", text: "  " })).rejects.toMatchObject({ status: 400 });
+    expect(documentName("notes.md")).toBe("notes.md");
+    expect(documentName("notes.pdf")).toBe("notes.pdf");
+    expect(await fs.readdir(dir)).toEqual(["knowledge.txt"]);
+  });
+
+  it("extracts a pdf and embeds only that file under its name", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "rag-upload-"));
+    await fs.writeFile(path.join(dir, "knowledge.txt"), "The gym is on the 3rd floor.");
+    const embedded = [];
+    const counting = {
+      embedDocuments: async (texts) => {
+        embedded.push(texts);
+        return texts.map(embedOne);
+      },
+      embedQuery: fakeEmbeddings.embedQuery,
+    };
+    const rag = makeService({
+      corpusPath: dir,
+      embeddings: counting,
+      store: createMemoryStore(counting),
+      topK: 1,
+      minScore: 0.51,
+    });
+    await rag.ingest();
+    embedded.length = 0;
+
+    const pdf = pdfWithText("The visitor parking code is maple-17.");
+    const added = await rag.addDocument({ filename: "parking.pdf", data: pdf.toString("base64") });
+    expect(added.filename).toBe("parking.pdf");
+    expect(embedded).toEqual([["The visitor parking code is maple-17."]]);
+    expect(await fs.readFile(path.join(dir, "parking.pdf"))).toEqual(pdf);
+
+    const found = await rag.ask("maple");
+    expect(found.matchedSources[0].source).toBe("parking.pdf");
+    expect(found.matchedSources[0].text).toContain("maple-17");
+  });
+
+  it("accepts an upload before embedding and can retry a failed job", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "rag-upload-"));
+    await fs.writeFile(path.join(dir, "knowledge.txt"), "The gym is on the 3rd floor.");
+    let fail = false;
+    let gate = null;
+    const counting = {
+      embedDocuments: async (texts) => {
+        if (fail) throw new Error("ollama down");
+        if (gate) await gate;
+        return texts.map(embedOne);
+      },
+      embedQuery: fakeEmbeddings.embedQuery,
+    };
+    const rag = makeService({
+      corpusPath: dir,
+      embeddings: counting,
+      store: createMemoryStore(counting),
+      topK: 1,
+      minScore: 0.51,
+    });
+    const app = createApp([createRagModule({ service: rag })]);
+    await rag.ingest();
+
+    let release;
+    gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    const posted = await request(app)
+      .post("/api/rag/documents")
+      .send({ filename: "parking.md", text: "The visitor parking code is maple-17." });
+    expect(posted.status).toBe(202);
+    expect(posted.body).toEqual({ filename: "parking.md", status: "queued", chunks: null, error: null });
+
+    const removed = request(app).delete("/api/rag/documents/parking.md");
+    release();
+    const deleted = await removed;
+    expect(deleted.status).toBe(200);
+    await expect(fs.access(path.join(dir, "parking.md"))).rejects.toThrow();
+    await rag.whenIdle();
+    expect((await rag.ask("maple")).refused).toBe(true);
+
+    gate = null;
+    fail = true;
+    const again = await request(app)
+      .post("/api/rag/documents")
+      .send({ filename: "parking.md", text: "The visitor parking code is maple-17." });
+    expect(again.status).toBe(202);
+    await rag.whenIdle();
+    const failed = await request(app).get("/api/rag/documents/parking.md");
+    expect(failed.body.status).toBe("failed");
+    expect(failed.body.error).toMatch(/ollama down/);
+    expect(await fs.readFile(path.join(dir, "parking.md"), "utf-8")).toContain("maple-17");
+
+    fail = false;
+    const retried = await request(app).post("/api/rag/documents/parking.md/retry");
+    expect(retried.status).toBe(202);
+    expect(retried.body.status).toBe("queued");
+    await rag.whenIdle();
+    const ready = await request(app).get("/api/rag/documents/parking.md");
+    expect(ready.body.status).toBe("ready");
+    expect((await rag.ask("maple")).matchedSources[0].source).toBe("parking.md");
+  });
+
+  it("reads markdown files from the docs folder", async () => {
+    const dir = await fs.mkdtemp(path.join(os.tmpdir(), "rag-corpus-"));
+    await fs.writeFile(path.join(dir, "b.txt"), "gym");
+    await fs.writeFile(path.join(dir, "a.md"), "maple");
+    const corpus = await readCorpus(dir);
+    expect(corpus.documents.map((document) => document.source)).toEqual(["a.md", "b.txt"]);
+  });
+
   it("fails clearly when the corpus file is missing", async () => {
     const rag = makeService({ corpusPath: path.join("does", "not", "exist.txt") });
     await expect(rag.ingest()).rejects.toThrow(/ENOENT/);
@@ -199,3 +403,28 @@ describe("createRagService", () => {
     expect(second.documents.map((document) => document.source)).toEqual(["knowledge.txt", "office.txt"]);
   });
 });
+
+/** A one-page PDF whose only text is the message. Parentheses in the message must stay unescaped. */
+function pdfWithText(message) {
+  const stream = `BT /F1 24 Tf 72 720 Td (${message}) Tj ET`;
+  const objects = [
+    "1 0 obj\n<< /Type /Catalog /Pages 2 0 R >>\nendobj\n",
+    "2 0 obj\n<< /Type /Pages /Kids [3 0 R] /Count 1 >>\nendobj\n",
+    "3 0 obj\n<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Contents 4 0 R /Resources << /Font << /F1 5 0 R >> >> >>\nendobj\n",
+    `4 0 obj\n<< /Length ${Buffer.byteLength(stream)} >>\nstream\n${stream}\nendstream\nendobj\n`,
+    "5 0 obj\n<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\nendobj\n",
+  ];
+  let body = "%PDF-1.4\n";
+  const offsets = [0];
+  for (const object of objects) {
+    offsets.push(Buffer.byteLength(body));
+    body += object;
+  }
+  const xrefStart = Buffer.byteLength(body);
+  let xref = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (let index = 1; index < offsets.length; index += 1) {
+    xref += `${String(offsets[index]).padStart(10, "0")} 00000 n \n`;
+  }
+  const trailer = `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`;
+  return Buffer.from(body + xref + trailer);
+}

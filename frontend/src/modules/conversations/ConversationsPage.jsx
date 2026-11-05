@@ -95,7 +95,7 @@ export default function ConversationsPage() {
       await readSse(res, (event, data) => {
         if (event === "meta") {
           if (data.summary) setSummary(data.summary);
-          patchLast(() => ({ sources: data.sources }));
+          patchLast(() => ({ sources: data.sources, searchQuery: data.searchQuery }));
         }
         if (event === "token") patchLast((last) => ({ content: last.content + data.text }));
         if (event === "done" && data.finish === "stopped") patchLast(() => ({ stopped: true }));
@@ -161,6 +161,9 @@ export default function ConversationsPage() {
               {message.role === "user" ? "You" : "Bot"}:
             </span>{" "}
             {message.content}
+            {message.searchQuery && messages[index - 1]?.content !== message.searchQuery && (
+              <div style={styles.search}>Searched: {message.searchQuery}</div>
+            )}
             {message.sources?.length > 0 && (
               <div style={styles.sources}>
                 {message.sources.map((source, sourceIndex) => (
@@ -236,6 +239,7 @@ const styles = {
   msg: { marginBottom: 14, lineHeight: 1.4, whiteSpace: "pre-wrap" },
   userLabel: { color: "#38bdf8", fontWeight: 600 },
   botLabel: { color: "#e2e8f0", fontWeight: 600 },
+  search: { fontSize: "0.8rem", color: "#94a3b8", marginTop: 4 },
   sources: { fontSize: "0.8rem", color: "#94a3b8", marginTop: 4 },
   stopped: { color: "#94a3b8", fontSize: "0.8rem", marginTop: 4 },
   thinking: { color: "#64748b", fontStyle: "italic" },

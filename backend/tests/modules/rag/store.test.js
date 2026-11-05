@@ -34,6 +34,14 @@ function fakeChroma() {
           });
         }
       },
+      async delete({ where }) {
+        for (let index = records.length - 1; index >= 0; index -= 1) {
+          if (records[index].metadata?.source === where?.source) records.splice(index, 1);
+        }
+      },
+      async modify({ metadata }) {
+        collection.metadata = { ...collection.metadata, ...metadata };
+      },
       async query({ nResults }) {
         const slice = records.slice(0, nResults);
         return {
@@ -140,6 +148,29 @@ describe("createChromaStore", () => {
     expect(status.count).toBe(1);
     expect(status.corpusHash).toBe("def");
     expect(status.space).toBe("cosine");
+
+    const calls = [];
+    const counting = {
+      embedDocuments: async (texts) => {
+        calls.push(texts);
+        return texts.map(() => [1, 0]);
+      },
+      embedQuery: async () => [1, 0],
+    };
+    const incremental = createChromaStore({
+      embeddings: counting,
+      url: "http://localhost:8000",
+      client,
+    });
+    await incremental.upsertSource(
+      [{ pageContent: "maple parking", metadata: { source: "parking.md" } }],
+      { source: "parking.md", corpusHash: "three" },
+    );
+    expect(calls).toEqual([["maple parking"]]);
+    expect((await incremental.status()).count).toBe(2);
+    await incremental.removeSource("parking.md", { corpusHash: "four" });
+    expect((await incremental.status()).count).toBe(1);
+    expect((await incremental.status()).corpusHash).toBe("four");
 
     const hits = await store.search("where is the gym", 1);
     expect(hits).toEqual([

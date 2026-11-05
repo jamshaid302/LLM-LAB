@@ -47,6 +47,18 @@ export function createMemoryStore(embeddings) {
       if (chunks.length > 0) await vectorStore.addDocuments(chunks);
       savedHash = corpusHash;
     },
+    async upsertSource(chunks, { source, corpusHash }) {
+      vectorStore.memoryVectors = vectorStore.memoryVectors.filter((item) => item.metadata?.source !== source);
+      if (chunks.length > 0) {
+        const vectors = await embeddings.embedDocuments(chunks.map((chunk) => chunk.pageContent));
+        await vectorStore.addVectors(vectors, chunks);
+      }
+      savedHash = corpusHash;
+    },
+    async removeSource(source, { corpusHash }) {
+      vectorStore.memoryVectors = vectorStore.memoryVectors.filter((item) => item.metadata?.source !== source);
+      savedHash = corpusHash;
+    },
     async search(question, k) {
       const results = await vectorStore.similaritySearchWithScore(question, k);
       return results.map(([doc, score]) => ({
@@ -122,6 +134,25 @@ export function createChromaStore({
         })),
         embeddings: vectors,
       });
+    },
+    async upsertSource(chunks, { source, corpusHash }) {
+      const current = await open();
+      await current.delete({ where: { source } });
+      if (chunks.length > 0) {
+        const vectors = await embeddings.embedDocuments(chunks.map((chunk) => chunk.pageContent));
+        await current.add({
+          ids: chunks.map((_, index) => `${source}-${index}`),
+          documents: chunks.map((chunk) => chunk.pageContent),
+          metadatas: chunks.map(() => ({ source })),
+          embeddings: vectors,
+        });
+      }
+      await current.modify({ metadata: { ...(current.metadata ?? {}), corpusHash, space: "cosine" } });
+    },
+    async removeSource(source, { corpusHash }) {
+      const current = await open();
+      await current.delete({ where: { source } });
+      await current.modify({ metadata: { ...(current.metadata ?? {}), corpusHash, space: "cosine" } });
     },
     async search(question, k) {
       const current = await open();

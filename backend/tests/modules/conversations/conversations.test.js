@@ -4,7 +4,13 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "../../../src/app.js";
 import { createConversationsModule } from "../../../src/modules/conversations/index.js";
 import { createMemoryConversationStore } from "../../../src/modules/conversations/memory-store.js";
-import { buildConversationMessages, chooseFold, recentTurns } from "../../../src/modules/conversations/prompt.js";
+import {
+  buildConversationMessages,
+  buildRewriteMessages,
+  chooseFold,
+  recentTurns,
+  searchQueryFromRewrite,
+} from "../../../src/modules/conversations/prompt.js";
 import { createConversationService } from "../../../src/modules/conversations/service.js";
 
 describe("conversation prompt", () => {
@@ -44,6 +50,23 @@ describe("conversation prompt", () => {
     expect(messages.map((message) => message.content)).not.toContain("My name is Sam.");
   });
 
+  it("asks for a search query and keeps a one-line rewrite", () => {
+    const messages = buildRewriteMessages({
+      summary: "They were talking about the visitor wifi.",
+      messages: [{ role: "user", content: "Tell me about the visitor wifi." }],
+      question: "What is the password?",
+    });
+    expect(messages[0].content).toContain("Do not answer");
+    expect(messages[1].content).toContain("visitor wifi");
+    expect(messages[1].content).toContain("Latest message:");
+    expect(messages[1].content).toContain("What is the password?");
+    expect(searchQueryFromRewrite("visitor wifi password\nextra", "What is the password?")).toBe(
+      "visitor wifi password",
+    );
+    expect(searchQueryFromRewrite("   ", "What is the password?")).toBe("What is the password?");
+    expect(searchQueryFromRewrite("x".repeat(301), "What is the password?")).toBe("What is the password?");
+  });
+
   it("folds the older half once the pending messages pass the limit", () => {
     const messages = [
       { role: "user", content: "one" },
@@ -61,9 +84,14 @@ describe("conversation service", () => {
   it("saves both turns and feeds the saved reply into the next prompt", async () => {
     const store = createMemoryConversationStore();
     const seen = [];
+    const queries = [];
     const service = createConversationService({
       store,
-      retrieveContext: async () => [{ text: "Gym on the 3rd floor.", source: "knowledge.txt", score: 0.8 }],
+      retrieveContext: async (query) => {
+        queries.push(query);
+        return [{ text: "Gym on the 3rd floor.", source: "knowledge.txt", score: 0.8 }];
+      },
+      completeChat: async () => "Where is the company gym?",
       streamChat: async ({ messages, onToken }) => {
         seen.push(messages);
         onToken("Noted.");
@@ -90,6 +118,8 @@ describe("conversation service", () => {
     expect(seen[1].map((message) => message.content)).toContain("My name is Sam.");
     expect(seen[1].map((message) => message.content)).toContain("Noted.");
     expect(seen[1][0].content).toContain("knowledge.txt");
+    expect(seen[1].at(-1).content).toBe("What is my name?");
+    expect(queries).toEqual(["My name is Sam.", "Where is the company gym?"]);
     expect(chunks[0]).toContain("event: meta");
     expect((await service.listThreads())[0].title).toBe("My name is Sam.");
   });
@@ -128,7 +158,9 @@ describe("conversation service", () => {
       historyLimit: 2,
       retrieveContext: async () => [],
       completeChat: async (messages) => {
-        summarized.push(messages.at(-1).content);
+        const content = messages.at(-1).content;
+        if (content.includes("Latest message:")) return "the user's name";
+        summarized.push(content);
         return "The user's name is Sam.";
       },
       streamChat: async ({ messages, onToken }) => {
@@ -156,6 +188,47 @@ describe("conversation service", () => {
     expect(saved.messages).toHaveLength(6);
     expect(saved.summary).toBe("The user's name is Sam.");
     expect(saved.summarizedCount).toBeGreaterThan(0);
+  });
+
+  it("searches with a rewritten follow-up and leaves the original message in the transcript", async () => {
+    const store = createMemoryConversationStore();
+    const queries = [];
+    const seen = [];
+    const service = createConversationService({
+      store,
+      retrieveContext: async (query) => {
+        queries.push(query);
+        return query === "visitor wifi password"
+          ? [{ text: "The visitor wifi password is lantern-42.", source: "office.txt", score: 0.84 }]
+          : [];
+      },
+      completeChat: async () => "\"visitor wifi password\"",
+      streamChat: async ({ messages, onToken }) => {
+        seen.push(messages);
+        onToken("lantern-42");
+      },
+    });
+
+    const thread = await service.createThread();
+    await service.streamReply({
+      threadId: thread.id,
+      message: "Tell me about the visitor wifi.",
+      write: () => {},
+    });
+    const chunks = [];
+    await service.streamReply({
+      threadId: thread.id,
+      message: "What is the password?",
+      write: (chunk) => chunks.push(chunk),
+    });
+
+    expect(queries).toEqual(["Tell me about the visitor wifi.", "visitor wifi password"]);
+    expect(seen.at(-1).at(-1).content).toBe("What is the password?");
+    expect(seen.at(-1)[0].content).toContain("office.txt");
+    expect(seen.at(-1)[0].content).toContain("lantern-42");
+    expect(chunks[0]).toContain("visitor wifi password");
+    const saved = await service.listMessages(thread.id);
+    expect(saved.messages.map((message) => message.content)).toContain("What is the password?");
   });
 });
 

@@ -39,6 +39,46 @@ export function createRagRouter(rag) {
     }
   });
 
+  router.get(
+    "/documents",
+    asyncHandler(async (req, res) => {
+      res.json({ documents: await rag.listDocuments() });
+    }),
+  );
+
+  router.get(
+    "/documents/:filename",
+    asyncHandler(async (req, res) => {
+      res.json(await rag.documentStatus(req.params.filename));
+    }),
+  );
+
+  router.delete(
+    "/documents/:filename",
+    asyncHandler(async (req, res) => {
+      res.json(await rag.removeDocument(req.params.filename));
+    }),
+  );
+
+  router.post(
+    "/documents/:filename/retry",
+    asyncHandler(async (req, res) => {
+      res.status(202).json(await rag.retryDocument(req.params.filename));
+    }),
+  );
+
+  router.post(
+    "/documents",
+    asyncHandler(async (req, res) => {
+      const accepted = await rag.acceptDocument({
+        filename: req.body?.filename,
+        text: req.body?.text,
+        data: req.body?.data,
+      });
+      res.status(202).json(accepted);
+    }),
+  );
+
   router.post(
     "/reingest",
     asyncHandler(async (req, res) => {

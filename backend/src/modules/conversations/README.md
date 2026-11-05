@@ -49,8 +49,9 @@ New chat
 Send
    → save the user message
    → if the thread is longer than the last 12 messages, summarize the older ones
-   → copy the summary plus the recent messages into the prompt
-   → retrieve chunks from the RAG store and drop any below the cutoff
+   → if this is a follow-up, rewrite it into one standalone search query
+   → retrieve chunks with that query and drop any below the cutoff
+   → copy the summary plus the original recent messages into the prompt
    → prompt                  system text + transcript + any documents
    → Ollama stream           token events over SSE
    → save the assistant message, including a partial one if Stop was pressed
@@ -73,8 +74,8 @@ turns together with the previous summary, so the early facts are not folded twic
 | ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------- |
 | `mongo-store.js`  | The `threads` and `messages` collections. Connects with `MONGO_URL`, default `mongodb://127.0.0.1:27018/lab`.                               |
 | `memory-store.js` | The same methods in process memory. Tests use it, so the suite does not need MongoDB.                                                       |
-| `prompt.js`       | Builds the next message list from saved turns and any retrieved chunks. Trims to the history limit and starts the window on a user message. |
-| `service.js`      | Creates threads, saves both sides of a turn, retrieves context, and streams the reply.                                                      |
+| `prompt.js`       | Builds the next message list from saved turns and any retrieved chunks. Trims to the history limit and starts the window on a user message. Also builds the follow-up search rewrite. |
+| `service.js`      | Creates threads, saves both sides of a turn, rewrites a follow-up for search, retrieves context, and streams the reply.                     |
 | `router.js`       | `GET/POST /threads`, `GET /threads/:id/messages`, `POST /threads/:id/stream`.                                                               |
 | `index.js`        | Connects on startup. Health reports whether the store is up.                                                                                |
 
@@ -100,6 +101,11 @@ actual user and assistant turns. Documents are a separate system section.
 **A summary, then the last 12 messages.** The summary is one extra model call, so it
 costs tokens. `CONVERSATION_HISTORY_LIMIT` changes how many raw messages stay beside it.
 
+**A follow-up is a bad search string.** "What is the password?" does not mention wifi.
+A second model call rewrites it into a standalone query, and that query is what Chroma
+sees. The reply prompt still contains the words the user typed. The first message in a
+thread is searched as written. A blank or very long rewrite is ignored.
+
 ## API
 
 `POST /api/conversations/threads` creates an empty thread and returns
@@ -117,9 +123,9 @@ outgrows the limit. An unknown id is 404.
 { "message": "My name is Sam." }
 ```
 
-The response is Server-Sent Events: `meta` (the summary, if one exists, and any
-knowledge-base chunks that cleared the cutoff), then `token`, then `done`. A missing
-message is JSON 400 before the stream opens.
+The response is Server-Sent Events: `meta` (the summary, if one exists, the search
+query, and any knowledge-base chunks that cleared the cutoff), then `token`, then
+`done`. A missing message is JSON 400 before the stream opens.
 
 ## Test plan
 
@@ -135,7 +141,7 @@ None of these need MongoDB or Ollama.
 
 | File                                                | What it checks                                                                                                                                                                                                                                                           |
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `tests/modules/conversations/conversations.test.js` | The history window starts on a user message. The prompt contains both the saved transcript and a retrieved chunk. A second reply is prompted with the first saved answer. Past the limit, older messages are summarized once and left out of the next transcript. A later overflow folds new turns into the existing summary and does not repeat the original lines. A stopped stream saves the partial text. An unknown thread is 404 and an empty message is 400. |
+| `tests/modules/conversations/conversations.test.js` | The history window starts on a user message. The prompt contains both the saved transcript and a retrieved chunk. A second reply is prompted with the first saved answer. A follow-up is searched with the rewritten query, and the original sentence stays in the transcript. Past the limit, older messages are summarized once and left out of the next transcript. A later overflow folds new turns into the existing summary and does not repeat the original lines. A stopped stream saves the partial text. An unknown thread is 404 and an empty message is 400. |
 
 ### Manual tests
 
@@ -151,6 +157,7 @@ Start the API and the frontend. Open **Conversations**.
 | ------------------------------------------ | -------------------------------------------------------------------------------- |
 | Click **New chat**, send "My name is Sam." | A reply streams in. The thread title becomes that sentence                       |
 | Send "What is my name?"                    | The reply uses Sam. No document is required                                      |
+| Send "Tell me about the visitor wifi." then "What is the password?" | The second reply says lantern-42. A line says **Searched:** and names the wifi. The source is `office.txt`. The transcript still shows "What is the password?" |
 | Send "Where is the company gym?"           | The reply says 3rd floor, and a `knowledge.txt` source is listed                 |
 | Set `CONVERSATION_HISTORY_LIMIT=2`, restart, and send a third message | A card titled **Earlier messages summarized** appears. The first messages are still listed. A question about the first fact still works |
 | Refresh the page                           | The same thread and both answers are still there                                 |
@@ -160,6 +167,7 @@ Start the API and the frontend. Open **Conversations**.
 ## Known limitations
 
 - **One local user.** Every thread belongs to `userId: "local"`. There is no login.
+- **The search rewrite is another model call.** A follow-up costs one extra completion before retrieval. `llama3.2:1b` sometimes puts the answer inside the query. The original sentence is still what the reply sees.
 - **The summary can drop a detail.** It is a model paragraph, not a lossless copy. The
   full messages are still in MongoDB if you need to check. `llama3.2:1b` often drops
   the fact or adds one that was never said. A larger local model keeps it.

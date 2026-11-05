@@ -244,7 +244,8 @@ turns are copied into the next prompt. If Chroma also finds a matching chunk, th
 chunk is added to the same prompt. One local user id, `local`, stands in until real
 auth. Past 12 messages, the older turns are summarized in one model call. The summary
 is saved on the thread and sent with the recent messages. The original messages stay
-in MongoDB.
+in MongoDB. A follow-up is rewritten into a standalone search query before Chroma is
+called. The reply still sees the sentence the user typed.
 
 Still to come:
 
@@ -263,11 +264,18 @@ Still to come:
 - Caching, including semantic caching of similar questions.
 - Choosing the small model for an easy request and the larger one only when needed.
 
-### Milestone 5 — Document pipeline · planned
+### Milestone 5 — Document pipeline · done
 
-- PDF and Markdown upload with parsing.
-- Embedding as a background job with progress reporting, instead of blocking a request.
-- Re-indexing, incremental updates, and deletion.
+The RAG page uploads a `.txt`, `.md`, or `.pdf` file. The API checks the name, writes
+the original file into `docs/`, and returns while an in-process job embeds that file.
+The page polls until the job is ready or failed, and a failed job can be retried. A
+PDF is stored as bytes and chunked from the text extracted in Node. Chunks keep the
+file name. Remove waits out an in-flight embed of that file, then drops the file and
+its chunks together. `knowledge.txt` and `office.txt` stay. A path, a PDF with no
+extractable text, and an empty file are rejected before a job starts. **Re-ingest
+docs** still waits and embeds the whole folder. The sidebar item Document Pipeline
+stays planned; this work lives on the RAG page. The queue is in memory, so a restart
+drops it and startup embeds again because the folder hash changed.
 
 ### Milestone 6 — Security and multi-tenancy · planned
 
@@ -285,9 +293,10 @@ products need this more than they need a chatbot.
 
 ### Milestone 8 — Advanced retrieval · planned
 
-Hybrid keyword and vector search, query rewriting, reranking, and parent-document
-retrieval. Each is measured against the Milestone 2 baseline, and anything that does not
-improve the numbers is recorded as a negative result rather than kept.
+Hybrid keyword and vector search, reranking, and parent-document retrieval. Conversations
+already rewrite a follow-up into a search query. This milestone measures retrieval
+changes against the Milestone 2 baseline, and anything that does not improve the numbers
+is recorded as a negative result rather than kept.
 
 ### Milestone 9 — Evaluation and hallucination detection · planned
 

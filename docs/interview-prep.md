@@ -107,8 +107,9 @@ wifi password cites `office.txt` and the gym cites `knowledge.txt`.
 
 ### What is still missing?
 
-Citations are not checked against the chunk text. The loader reads `.txt` files only.
-A PDF is still the document pipeline.
+Citations are not checked against the chunk text. The loader reads `.txt`, `.md`, and
+the text layer of a `.pdf`. Upload embedding runs in this process; a queue that lives
+in another process is still unbuilt.
 
 ### Where does RAG show up in a MERN product?
 
@@ -277,14 +278,28 @@ embedding step is the same.
 
 ---
 
-## Planned — document pipeline
+## Built — document upload
 
-### How do you ingest a PDF without blocking the request?
+### How does a new document get into the knowledge base?
 
-The upload route stores the file and enqueues a job. A worker extracts text, chunks it,
-embeds it, and writes the vectors. The UI polls status. Embedding is slow and fails
-partway, so the job has to be retryable and the user has to be able to delete a
-document and its chunks together.
+In this project the RAG page reads a `.txt` or `.md` file as text, or a `.pdf` as
+base64, and posts the name with that body. The API allows only a simple file name.
+Text and markdown are written as UTF-8. A PDF is written as the original bytes, and a
+PDF with no text layer is rejected before a job starts. The response is HTTP 202 with
+status `queued`. One worker in the API process then chunks that file, embeds it, and
+writes the vectors. The page polls until the status is `ready` or `failed`. A failed
+job can be retried without sending the file again. Chunks keep the uploaded name.
+Remove waits until an in-flight embed of that file finishes, then deletes the file and
+drops its chunks together. `knowledge.txt` and `office.txt` cannot be removed. A
+folder path and an empty file are rejected.
+
+### How would you run that job outside the API process?
+
+The way I would build it is a durable queue and a separate worker. The API would only
+store the file and enqueue an id. The worker would survive an API restart, retry with
+backoff, and report progress that more than one server can read. In this project the
+queue is memory inside the API. A restart drops it. The saved file changes the folder
+hash, so startup embeds the folder again. That separate worker is not built.
 
 ---
 
@@ -310,9 +325,11 @@ answers "which paragraph is closest to this question?" MongoDB holds threads and
 messages and answers "what did we already say, in order?"
 
 The next prompt uses both. Recent messages are copied out of MongoDB so the model can
-continue the transcript. If the new question also matches a chunk above the cutoff,
-that chunk is added as documents. "What is my name?" comes from the transcript. "Where
-is the gym?" comes from `knowledge.txt` when nobody has said it yet.
+continue the transcript. A follow-up such as "What is the password?" is a bad search
+string, so a short model call rewrites it into a standalone query first. Chroma sees
+that query. The reply still sees the original sentence. "What is my name?" comes from
+the transcript. "Where is the gym?" comes from `knowledge.txt` when nobody has said it
+yet.
 
 A vector search is the wrong tool for "message 1, then 2, then 3." Putting chat text
 into the same Chroma collection as the knowledge base would let an old reply compete

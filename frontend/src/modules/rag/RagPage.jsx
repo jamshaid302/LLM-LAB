@@ -8,10 +8,21 @@ export default function RagPage() {
   const [loading, setLoading] = useState(false);
   const [report, setReport] = useState(null);
   const [storeName, setStoreName] = useState("");
+  const [documents, setDocuments] = useState([]);
+  const [jobs, setJobs] = useState({});
   const chatEndRef = useRef(null);
   const abortRef = useRef(null);
+  const fileRef = useRef(null);
+  const watchTokens = useRef(new Map());
+
+  async function loadDocuments() {
+    const res = await fetch("/api/rag/documents");
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) setDocuments(data.documents ?? []);
+  }
 
   useEffect(() => {
+    loadDocuments().catch(() => setDocuments([]));
     fetch("/api/health")
       .then((res) => res.json())
       .then((data) => setStoreName(data.modules?.rag?.store ?? ""))
@@ -93,8 +104,108 @@ export default function RagPage() {
         ...prev,
         { role: "bot", text: `✅ Re-ingested ${data.chunks} chunks from the docs folder` },
       ]);
+      await loadDocuments();
     } catch (err) {
       setMessages((prev) => [...prev, { role: "bot", text: `Re-ingest failed: ${err.message}` }]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function replaceMessage(id, text) {
+    setMessages((prev) => prev.map((message) => (message.id === id ? { ...message, text } : message)));
+  }
+
+  async function watchDocument(filename, messageId) {
+    const token = (watchTokens.current.get(filename) ?? 0) + 1;
+    watchTokens.current.set(filename, token);
+    try {
+      for (;;) {
+        const res = await fetch(`/api/rag/documents/${encodeURIComponent(filename)}`);
+        const data = await res.json().catch(() => ({}));
+        if (watchTokens.current.get(filename) !== token) return;
+        if (!res.ok) return;
+        setJobs((prev) => ({ ...prev, [filename]: data }));
+        if (data.status === "ready") {
+          replaceMessage(messageId, `Embedded ${filename}. The store now has ${data.chunks} chunks.`);
+          await loadDocuments();
+          return;
+        }
+        if (data.status === "failed") {
+          replaceMessage(messageId, `Embedding ${filename} failed: ${data.error}`);
+          return;
+        }
+        await new Promise((resolve) => setTimeout(resolve, 400));
+      }
+    } catch (err) {
+      if (watchTokens.current.get(filename) !== token) return;
+      replaceMessage(messageId, `Embedding ${filename} failed: ${err.message}`);
+    }
+  }
+
+  async function handleUpload(e) {
+    const file = e.target.files?.[0];
+    e.target.value = "";
+    if (!file || loading) return;
+
+    setLoading(true);
+    try {
+      const pdf = file.name.toLowerCase().endsWith(".pdf");
+      const body = pdf
+        ? { filename: file.name, data: await fileToBase64(file) }
+        : { filename: file.name, text: await file.text() };
+      const res = await fetch("/api/rag/documents", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      const id = crypto.randomUUID();
+      setMessages((prev) => [...prev, { id, role: "bot", text: `Saved ${data.filename}. Embedding it now.` }]);
+      setJobs((prev) => ({ ...prev, [data.filename]: data }));
+      await loadDocuments();
+      watchDocument(data.filename, id);
+    } catch (err) {
+      setMessages((prev) => [...prev, { role: "bot", text: `Upload failed: ${err.message}` }]);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleRetry(name) {
+    try {
+      const res = await fetch(`/api/rag/documents/${encodeURIComponent(name)}/retry`, { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      const id = crypto.randomUUID();
+      setMessages((prev) => [...prev, { id, role: "bot", text: `Embedding ${data.filename} again.` }]);
+      setJobs((prev) => ({ ...prev, [data.filename]: data }));
+      watchDocument(data.filename, id);
+    } catch (err) {
+      setMessages((prev) => [...prev, { role: "bot", text: `Retry failed: ${err.message}` }]);
+    }
+  }
+
+  async function handleRemove(name) {
+    setLoading(true);
+    try {
+      const res = await fetch(`/api/rag/documents/${encodeURIComponent(name)}`, { method: "DELETE" });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      watchTokens.current.set(name, (watchTokens.current.get(name) ?? 0) + 1);
+      setJobs((prev) => {
+        const next = { ...prev };
+        delete next[name];
+        return next;
+      });
+      setMessages((prev) => [
+        ...prev,
+        { role: "bot", text: `Removed ${data.filename} and dropped its chunks. The store now has ${data.chunks} chunks.` },
+      ]);
+      await loadDocuments();
+    } catch (err) {
+      setMessages((prev) => [...prev, { role: "bot", text: `Remove failed: ${err.message}` }]);
     } finally {
       setLoading(false);
     }
@@ -124,7 +235,46 @@ export default function RagPage() {
         <button onClick={handleEval} disabled={loading} style={styles.reingestBtn}>
           Score retrieval
         </button>
+        <button type="button" onClick={() => fileRef.current?.click()} disabled={loading} style={styles.reingestBtn}>
+          Upload .txt, .md, or .pdf
+        </button>
+        <input
+          ref={fileRef}
+          type="file"
+          accept=".txt,.md,.pdf,text/plain,text/markdown,application/pdf"
+          onChange={handleUpload}
+          style={{ display: "none" }}
+        />
       </div>
+      {documents.length > 0 && (
+        <div style={styles.files}>
+          {documents.map((document) => (
+            <span key={document.name} style={styles.file}>
+              {document.name}
+              {(jobs[document.name]?.status === "queued" || jobs[document.name]?.status === "embedding") && (
+                <span style={styles.kept}>embedding</span>
+              )}
+              {document.removable && jobs[document.name]?.status === "failed" && (
+                <button type="button" onClick={() => handleRetry(document.name)} style={styles.removeBtn}>
+                  Retry
+                </button>
+              )}
+              {document.removable ? (
+                <button
+                  type="button"
+                  onClick={() => handleRemove(document.name)}
+                  disabled={loading}
+                  style={styles.removeBtn}
+                >
+                  Remove
+                </button>
+              ) : (
+                <span style={styles.kept}>kept</span>
+              )}
+            </span>
+          ))}
+        </div>
+      )}
       {report && (
         <p style={styles.report}>
           Recall@{report.k} before cutoff {(report.recallAtK.before * 100).toFixed(0)}%, after{" "}
@@ -188,9 +338,38 @@ export default function RagPage() {
   );
 }
 
+async function fileToBase64(file) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  const size = 0x8000;
+  for (let index = 0; index < bytes.length; index += size) {
+    binary += String.fromCharCode(...bytes.subarray(index, Math.min(index + size, bytes.length)));
+  }
+  return btoa(binary);
+}
+
 const styles = {
   page: { maxWidth: 760 },
   actions: { display: "flex", gap: 8, marginBottom: 12 },
+  files: { display: "flex", flexWrap: "wrap", gap: 8, marginBottom: 12 },
+  file: {
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 8,
+    border: "1px solid #334155",
+    borderRadius: 6,
+    padding: "4px 8px",
+    color: "#cbd5e1",
+    fontSize: "0.85rem",
+  },
+  removeBtn: {
+    border: "none",
+    background: "transparent",
+    color: "#fca5a5",
+    cursor: "pointer",
+    padding: 0,
+  },
+  kept: { color: "#64748b", fontSize: "0.75rem" },
   report: { color: "#94a3b8", fontSize: "0.85rem", marginTop: 0 },
   reingestBtn: {
     marginBottom: 12,

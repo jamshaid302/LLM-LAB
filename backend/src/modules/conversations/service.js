@@ -3,7 +3,13 @@ import { HttpError } from "../../core/http.js";
 import { completeOllamaChat, streamOllamaChat } from "../../core/ollama-stream.js";
 import { formatSse, isAbortError } from "../../core/sse.js";
 
-import { buildConversationMessages, buildSummaryMessages, chooseFold } from "./prompt.js";
+import {
+  buildConversationMessages,
+  buildRewriteMessages,
+  buildSummaryMessages,
+  chooseFold,
+  searchQueryFromRewrite,
+} from "./prompt.js";
 
 const MAX_MESSAGE = 4000;
 
@@ -65,7 +71,12 @@ export function createConversationService({
 
     await db.addMessage({ threadId, role: "user", content: text });
     const history = await prepareHistory({ db, thread, threadId });
-    const docs = await retrieveContext(text);
+    const searchQuery = await rewriteSearchQuery({
+      summary: history.summary,
+      messages: history.recent,
+      question: text,
+    });
+    const docs = await retrieveContext(searchQuery);
     const prompt = buildConversationMessages({
       history: history.recent,
       docs,
@@ -76,6 +87,7 @@ export function createConversationService({
       formatSse("meta", {
         summary: history.summary,
         summarizedCount: history.summarizedCount,
+        searchQuery,
         sources: (docs ?? []).map((doc) => ({
           text: doc.text,
           source: doc.source,
@@ -104,6 +116,17 @@ export function createConversationService({
       await db.addMessage({ threadId, role: "assistant", content: answer, stopped });
     }
     write(formatSse("done", { finish: stopped ? "stopped" : "stop" }));
+  }
+
+  async function rewriteSearchQuery({ summary, messages, question }) {
+    const earlier = messages.slice(0, -1);
+    if (earlier.length === 0 && !summary) return question;
+
+    const rewritten = searchQueryFromRewrite(
+      await completeChat(buildRewriteMessages({ summary, messages: earlier, question })),
+      question,
+    );
+    return rewritten;
   }
 
   async function prepareHistory({ db, thread, threadId }) {
