@@ -47,25 +47,31 @@ export function createMemoryStore(embeddings) {
       if (chunks.length > 0) await vectorStore.addDocuments(chunks);
       savedHash = corpusHash;
     },
-    async upsertSource(chunks, { source, corpusHash }) {
-      vectorStore.memoryVectors = vectorStore.memoryVectors.filter((item) => item.metadata?.source !== source);
+    async upsertSource(chunks, { source, corpusHash, owner }) {
+      vectorStore.memoryVectors = vectorStore.memoryVectors.filter((item) => !sameFile(item, source, owner));
       if (chunks.length > 0) {
         const vectors = await embeddings.embedDocuments(chunks.map((chunk) => chunk.pageContent));
         await vectorStore.addVectors(vectors, chunks);
       }
       savedHash = corpusHash;
     },
-    async removeSource(source, { corpusHash }) {
-      vectorStore.memoryVectors = vectorStore.memoryVectors.filter((item) => item.metadata?.source !== source);
+    async removeSource(source, { corpusHash, owner }) {
+      vectorStore.memoryVectors = vectorStore.memoryVectors.filter((item) => !sameFile(item, source, owner));
       savedHash = corpusHash;
     },
-    async search(question, k) {
-      const results = await vectorStore.similaritySearchWithScore(question, k);
-      return results.map(([doc, score]) => ({
-        text: doc.pageContent,
-        score,
-        source: doc.metadata?.source,
-      }));
+    async search(question, k, userId) {
+      const total = vectorStore.memoryVectors.length;
+      if (total === 0) return [];
+      const results = await vectorStore.similaritySearchWithScore(question, total);
+      return results
+        .filter(([doc]) => visibleTo(doc.metadata?.owner, userId))
+        .slice(0, k)
+        .map(([doc, score]) => ({
+          text: doc.pageContent,
+          score,
+          source: doc.metadata?.source,
+          owner: doc.metadata?.owner ?? null,
+        }));
     },
   };
 }
@@ -131,35 +137,40 @@ export function createChromaStore({
         documents: chunks.map((chunk) => chunk.pageContent),
         metadatas: chunks.map((chunk) => ({
           source: String(chunk.metadata?.source ?? "unknown"),
+          owner: String(chunk.metadata?.owner ?? "shared"),
         })),
         embeddings: vectors,
       });
     },
-    async upsertSource(chunks, { source, corpusHash }) {
+    async upsertSource(chunks, { source, corpusHash, owner }) {
       const current = await open();
-      await current.delete({ where: { source } });
+      await current.delete({ where: ownerFilter(source, owner) });
       if (chunks.length > 0) {
         const vectors = await embeddings.embedDocuments(chunks.map((chunk) => chunk.pageContent));
         await current.add({
-          ids: chunks.map((_, index) => `${source}-${index}`),
+          ids: chunks.map((_, index) => `${owner ?? "shared"}-${source}-${index}`),
           documents: chunks.map((chunk) => chunk.pageContent),
-          metadatas: chunks.map(() => ({ source })),
+          metadatas: chunks.map((chunk) => ({
+            source,
+            owner: String(chunk.metadata?.owner ?? owner ?? "shared"),
+          })),
           embeddings: vectors,
         });
       }
       await current.modify({ metadata: { ...(current.metadata ?? {}), corpusHash, space: "cosine" } });
     },
-    async removeSource(source, { corpusHash }) {
+    async removeSource(source, { corpusHash, owner }) {
       const current = await open();
-      await current.delete({ where: { source } });
+      await current.delete({ where: ownerFilter(source, owner) });
       await current.modify({ metadata: { ...(current.metadata ?? {}), corpusHash, space: "cosine" } });
     },
-    async search(question, k) {
+    async search(question, k, userId) {
       const current = await open();
       const query = await embeddings.embedQuery(question);
       const result = await current.query({
         queryEmbeddings: [query],
         nResults: k,
+        ...(userId ? { where: { $or: [{ owner: "shared" }, { owner: userId }] } } : {}),
       });
       const documents = result.documents?.[0] ?? [];
       const metadatas = result.metadatas?.[0] ?? [];
@@ -168,9 +179,27 @@ export function createChromaStore({
         text,
         score: similarityFromCosineDistance(distances[index]),
         source: metadatas[index]?.source,
+        owner: metadatas[index]?.owner ?? null,
       }));
     },
   };
+}
+
+function sameFile(item, source, owner) {
+  if (item.metadata?.source !== source) return false;
+  if (!owner) return true;
+  return item.metadata?.owner === owner;
+}
+
+function visibleTo(owner, userId) {
+  if (!userId) return true;
+  if (!owner || owner === "shared") return true;
+  return owner === userId;
+}
+
+function ownerFilter(source, owner) {
+  if (!owner) return { source };
+  return { $and: [{ source }, { owner }] };
 }
 
 export function createVectorStore({ kind = "memory", embeddings, chromaUrl, collectionName, client }) {

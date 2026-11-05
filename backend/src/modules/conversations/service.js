@@ -40,17 +40,17 @@ export function createConversationService({
     return current;
   }
 
-  async function createThread() {
-    return requireStore().createThread({ userId });
+  async function createThread(actor = userId) {
+    return requireStore().createThread({ userId: actor });
   }
 
-  async function listThreads() {
-    return requireStore().listThreads(userId);
+  async function listThreads(actor = userId) {
+    return requireStore().listThreads(actor);
   }
 
-  async function listMessages(threadId) {
+  async function listMessages(threadId, actor = userId) {
     const thread = await requireStore().getThread(threadId);
-    if (!thread || thread.userId !== userId) throw new HttpError(404, "Thread not found");
+    if (!thread || thread.userId !== actor) throw new HttpError(404, "Thread not found");
     return {
       messages: await requireStore().listMessages(threadId),
       summary: thread.summary ?? "",
@@ -58,7 +58,7 @@ export function createConversationService({
     };
   }
 
-  async function streamReply({ threadId, message, signal, write }) {
+  async function streamReply({ threadId, message, signal, write, userId: actor = userId }) {
     const text = typeof message === "string" ? message.trim() : "";
     if (!text) throw new HttpError(400, "Missing 'message'");
     if (text.length > MAX_MESSAGE) {
@@ -67,7 +67,7 @@ export function createConversationService({
 
     const db = requireStore();
     const thread = await db.getThread(threadId);
-    if (!thread || thread.userId !== userId) throw new HttpError(404, "Thread not found");
+    if (!thread || thread.userId !== actor) throw new HttpError(404, "Thread not found");
 
     await db.addMessage({ threadId, role: "user", content: text });
     const history = await prepareHistory({ db, thread, threadId });
@@ -76,7 +76,7 @@ export function createConversationService({
       messages: history.recent,
       question: text,
     });
-    const docs = await retrieveContext(searchQuery);
+    const docs = await retrieveContext(searchQuery, actor);
     const prompt = buildConversationMessages({
       history: history.recent,
       docs,

@@ -2,6 +2,13 @@ import { Router } from "express";
 
 import { HttpError, asyncHandler } from "../../core/http.js";
 import { beginSse, formatSse, isAbortError, signalFromRequest } from "../../core/sse.js";
+import { userIdFromHeader } from "../../core/users.js";
+
+function userFrom(req) {
+  const userId = userIdFromHeader(req.get("X-User-Id"));
+  if (!userId) throw new HttpError(400, "Choose local or guest");
+  return userId;
+}
 
 export function createConversationsRouter(service) {
   const router = Router();
@@ -9,21 +16,21 @@ export function createConversationsRouter(service) {
   router.get(
     "/threads",
     asyncHandler(async (req, res) => {
-      res.json({ threads: await service.listThreads() });
+      res.json({ threads: await service.listThreads(userFrom(req)) });
     }),
   );
 
   router.post(
     "/threads",
     asyncHandler(async (req, res) => {
-      res.status(201).json(await service.createThread());
+      res.status(201).json(await service.createThread(userFrom(req)));
     }),
   );
 
   router.get(
     "/threads/:id/messages",
     asyncHandler(async (req, res) => {
-      res.json(await service.listMessages(req.params.id));
+      res.json(await service.listMessages(req.params.id, userFrom(req)));
     }),
   );
 
@@ -38,8 +45,16 @@ export function createConversationsRouter(service) {
       return;
     }
 
+    let userId;
     try {
-      await service.listMessages(req.params.id);
+      userId = userFrom(req);
+    } catch (err) {
+      next(err);
+      return;
+    }
+
+    try {
+      await service.listMessages(req.params.id, userId);
     } catch (err) {
       next(err);
       return;
@@ -53,6 +68,7 @@ export function createConversationsRouter(service) {
       await service.streamReply({
         threadId: req.params.id,
         message,
+        userId,
         signal: link.signal,
         write,
       });

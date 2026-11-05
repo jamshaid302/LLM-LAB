@@ -2,6 +2,7 @@ import { Suspense, useEffect, useState } from "react";
 
 import PlannedModule from "./components/PlannedModule.jsx";
 import Sidebar from "./components/Sidebar.jsx";
+import { USERS, currentUser, setCurrentUser } from "./lib/user.js";
 import { defaultModuleId, findModule, modules } from "./modules/registry.js";
 
 function currentModuleId() {
@@ -21,12 +22,19 @@ function useHealth() {
 
 export default function App() {
   const [activeId, setActiveId] = useState(currentModuleId);
+  const [userId, setUserId] = useState(currentUser);
   const health = useHealth();
 
   useEffect(() => {
     const onHashChange = () => setActiveId(currentModuleId());
     window.addEventListener("hashchange", onHashChange);
     return () => window.removeEventListener("hashchange", onHashChange);
+  }, []);
+
+  useEffect(() => {
+    const onUser = () => setUserId(currentUser());
+    window.addEventListener("lab-user", onUser);
+    return () => window.removeEventListener("lab-user", onUser);
   }, []);
 
   const active = findModule(activeId) ?? findModule(defaultModuleId);
@@ -41,11 +49,29 @@ export default function App() {
             <h1>{active.name}</h1>
             <p className="muted">{active.description}</p>
           </div>
-          <HealthBadge health={health} />
+          <div className="header-tools">
+            <label className="user-switch">
+              Who is asking
+              <select
+                value={userId}
+                onChange={(event) => {
+                  setCurrentUser(event.target.value);
+                  setUserId(event.target.value);
+                }}
+              >
+                {USERS.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <HealthBadge health={health} />
+          </div>
         </header>
         {Page ? (
           <Suspense fallback={<p className="muted">Loading module...</p>}>
-            <Page key={active.id} />
+            <Page key={`${active.id}:${userId}`} />
           </Suspense>
         ) : (
           <PlannedModule module={active} />

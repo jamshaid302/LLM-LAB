@@ -2,17 +2,19 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { DEFAULT_USER, SHARED_OWNER } from "../../core/users.js";
 import { config } from "../../core/config.js";
 import { HttpError } from "../../core/http.js";
-import { streamOllamaChat } from "../../core/ollama-stream.js";
-import { createChatModel, createEmbeddings } from "../../core/ollama.js";
+import { completeOllamaChat, streamOllamaChat } from "../../core/ollama-stream.js";
+import { createEmbeddings } from "../../core/ollama.js";
 import { formatSse } from "../../core/sse.js";
 
 import { splitText } from "./chunking.js";
-import { documentName, isProtectedDocument, listCorpusFiles, readCorpus } from "./corpus.js";
+import { documentName, isProtectedDocument, readCorpus } from "./corpus.js";
 import { createEmbedQueue } from "./embed-queue.js";
 import { extractPdfText } from "./pdf-text.js";
-import { NO_ANSWER, buildRagPrompt } from "./prompt.js";
+import { NO_ANSWER, buildRagMessages } from "./prompt.js";
+import { groundAnswer } from "./grounding.js";
 import { applyCutoff, scoreRetrieval } from "./retrieval.js";
 import { createVectorStore } from "./store.js";
 
@@ -28,7 +30,9 @@ export const QUESTIONS_PATH = path.join(moduleDir, "eval", "questions.json");
  * instead of requiring a running Ollama.
  */
 export function createRagService({
-  llm = createChatModel(),
+  llm = {
+    invoke: (messages) => completeOllamaChat({ messages, options: { temperature: 0 } }),
+  },
   embeddings = createEmbeddings(),
   corpusPath = DOCS_DIR,
   questionsPath = QUESTIONS_PATH,
@@ -89,7 +93,8 @@ export function createRagService({
    * Embed or drop one file. A store that already has the rest of the corpus only
    * touches that file. An empty store embeds the whole folder once.
    */
-  async function indexOne(source) {
+  async function indexOne(key) {
+    const { owner, source } = splitJobKey(key);
     const corpus = await readCorpus(corpusPath);
     const existing = await vectorStore.status();
     const incremental = existing.count > 0 && existing.corpusHash && vectorStore.upsertSource;
@@ -97,11 +102,15 @@ export function createRagService({
       return sync({ force: true });
     }
 
-    const document = corpus.documents.find((item) => item.source === source);
+    const document = corpus.documents.find((item) => item.source === source && item.owner === owner);
     if (document) {
-      await vectorStore.upsertSource(await chunksFrom(document), { source, corpusHash: corpus.hash });
+      await vectorStore.upsertSource(await chunksFrom(document), {
+        source,
+        owner,
+        corpusHash: corpus.hash,
+      });
     } else {
-      await vectorStore.removeSource(source, { corpusHash: corpus.hash });
+      await vectorStore.removeSource(source, { owner, corpusHash: corpus.hash });
     }
     chunkCount = (await vectorStore.status()).count;
     return { chunks: chunkCount, embedded: true, store: vectorStore.kind };
@@ -121,9 +130,10 @@ export function createRagService({
   }
 
   /** Check and store one file, then enqueue its embed. Does not wait for vectors. */
-  async function enqueueDocument({ filename, text, data }) {
+  async function enqueueDocument({ filename, text, data, userId = DEFAULT_USER }) {
     const name = requireDocumentName(filename);
-    const dir = await corpusDirectory(corpusPath);
+    const root = await corpusDirectory(corpusPath);
+    const dir = path.join(root, "users", userId);
     if (name.toLowerCase().endsWith(".pdf")) {
       const buffer = decodePdfData(data);
       let extracted = "";
@@ -133,6 +143,7 @@ export function createRagService({
         throw new HttpError(400, "Could not read that PDF");
       }
       if (!extracted.trim()) throw new HttpError(400, "This PDF has no extractable text");
+      await fs.mkdir(dir, { recursive: true });
       await fs.writeFile(path.join(dir, name), buffer);
     } else {
       const body = typeof text === "string" ? text : "";
@@ -140,15 +151,17 @@ export function createRagService({
       if (Buffer.byteLength(body) > MAX_DOCUMENT_BYTES) {
         throw new HttpError(400, "File must be at most 512 KB");
       }
+      await fs.mkdir(dir, { recursive: true });
       await fs.writeFile(path.join(dir, name), body, "utf-8");
     }
 
-    return embedQueue.enqueue(name);
+    return embedQueue.enqueue(jobKey(userId, name));
   }
 
   /** Upload route. Returns the queued job and does not wait for the embed. */
   async function acceptDocument(input) {
-    return embedQueue.present(await enqueueDocument(input));
+    const job = await enqueueDocument(input);
+    return publicJob(job);
   }
 
   /** Save one file and wait until its embed job finishes. Tests use this. */
@@ -158,22 +171,29 @@ export function createRagService({
     if (!result) {
       throw new HttpError(409, "That upload was replaced before embedding finished");
     }
-    return { filename: job.filename, chunks: result.chunks, store: result.store };
+    return { filename: displayName(job.filename), chunks: result.chunks, store: result.store };
   }
 
-  async function listDocuments() {
-    const dir = await corpusDirectory(corpusPath);
-    return listCorpusFiles(dir);
+  async function listDocuments(userId = DEFAULT_USER) {
+    const corpus = await readCorpus(corpusPath);
+    return corpus.documents
+      .filter((document) => document.owner === SHARED_OWNER || document.owner === userId)
+      .map((document) => ({
+        name: document.source,
+        shared: document.owner === SHARED_OWNER,
+        removable: document.owner !== SHARED_OWNER,
+      }))
+      .sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  async function documentStatus(filename) {
+  async function documentStatus(filename, userId = DEFAULT_USER) {
     const name = documentName(filename);
     if (!name) {
       throw new HttpError(400, "Use a .txt, .md, or .pdf name made of letters, numbers, dots, and dashes");
     }
-    const job = embedQueue.get(name);
-    if (job) return job;
-    const documents = await listDocuments();
+    const job = embedQueue.get(jobKey(userId, name));
+    if (job) return publicJob(job);
+    const documents = await listDocuments(userId);
     if (!documents.some((document) => document.name === name)) {
       throw new HttpError(404, "Document not found");
     }
@@ -181,56 +201,59 @@ export function createRagService({
   }
 
   /** Run the embed again after a failed job. The file is already on disk. */
-  async function retryDocument(filename) {
+  async function retryDocument(filename, userId = DEFAULT_USER) {
     const name = requireDocumentName(filename);
-    const current = embedQueue.get(name);
+    const key = jobKey(userId, name);
+    const current = embedQueue.get(key);
     if (!current || current.status !== "failed") {
       throw new HttpError(400, "That file is not waiting for a retry");
     }
-    const dir = await corpusDirectory(corpusPath);
+    const root = await corpusDirectory(corpusPath);
     try {
-      await fs.access(path.join(dir, name));
+      await fs.access(path.join(root, "users", userId, name));
     } catch (err) {
       if (err?.code === "ENOENT") throw new HttpError(404, "Document not found");
       throw err;
     }
-    return embedQueue.present(embedQueue.enqueue(name));
+    return publicJob(embedQueue.enqueue(key));
   }
 
   /**
-   * Remove one uploaded file and drop its chunks. An in-flight embed of that file
-   * is discarded, then one more pass drops its chunks, so a late job cannot write
-   * them back. The sample files stay embedded.
+   * Remove one file that belongs to this person and drop its chunks. An in-flight
+   * embed of that file is discarded, then one more pass drops its chunks. Shared
+   * sample files stay.
    */
-  async function removeDocument(filename) {
+  async function removeDocument(filename, userId = DEFAULT_USER) {
     const name = requireDocumentName(filename);
-    const dir = await corpusDirectory(corpusPath);
-    const target = path.join(dir, name);
+    const root = await corpusDirectory(corpusPath);
+    const target = path.join(root, "users", userId, name);
     try {
       await fs.unlink(target);
     } catch (err) {
       if (err?.code === "ENOENT") throw new HttpError(404, "Document not found");
       throw err;
     }
-    embedQueue.forget(name);
-    const job = embedQueue.enqueue(name);
+    const key = jobKey(userId, name);
+    embedQueue.forget(key);
+    const job = embedQueue.enqueue(key);
     const result = await job.done;
     if (!result) throw new HttpError(409, "That removal was replaced before it finished");
-    embedQueue.forget(name);
+    embedQueue.forget(key);
     return { filename: name, chunks: result.chunks, store: result.store };
   }
 
-  async function retrieve(question) {
-    const hits = await vectorStore.search(question, topK);
+  async function retrieve(question, userId = DEFAULT_USER) {
+    const hits = await vectorStore.search(question, topK, userId);
     return hits.map((hit) => ({
       text: hit.text,
       score: hit.score,
       source: hit.source ?? null,
+      owner: hit.owner ?? null,
     }));
   }
 
-  async function prepare(question) {
-    const hits = await retrieve(question);
+  async function prepare(question, userId = DEFAULT_USER) {
+    const hits = await retrieve(question, userId);
     const { matched, dropped } = applyCutoff(hits, minScore);
     const matchedSources = matched.map(present);
     const droppedSources = dropped.map(present);
@@ -254,19 +277,20 @@ export function createRagService({
       answer: null,
       matchedSources,
       droppedSources,
-      prompt: buildRagPrompt({ question, docs }),
+      messages: buildRagMessages({ question, docs }),
     };
   }
 
-  async function ask(question) {
-    const prepared = await prepare(question);
-    const { prompt, ...result } = prepared;
+  async function ask(question, userId = DEFAULT_USER) {
+    const prepared = await prepare(question, userId);
+    const { messages, ...result } = prepared;
     if (prepared.refused) return result;
-    return { ...result, answer: await llm.invoke(prompt) };
+    const verdict = groundAnswer(await llm.invoke(messages), result.matchedSources);
+    return { ...result, answer: verdict.answer, refused: !verdict.grounded };
   }
 
-  async function streamAnswer(question, { signal, write }) {
-    const prepared = await prepare(question);
+  async function streamAnswer(question, { signal, write, userId = DEFAULT_USER }) {
+    const prepared = await prepare(question, userId);
     write(
       formatSse("meta", {
         refused: prepared.refused,
@@ -281,14 +305,20 @@ export function createRagService({
       return;
     }
 
+    const parts = [];
     await streamChat({
-      messages: [{ role: "user", content: prepared.prompt }],
+      messages: prepared.messages,
       signal,
       onToken(token) {
+        parts.push(token);
         write(formatSse("token", { text: token }));
       },
     });
-    write(formatSse("done", { finish: "stop" }));
+    const verdict = groundAnswer(parts.join(""), prepared.matchedSources);
+    if (!verdict.grounded) {
+      write(formatSse("replace", { text: verdict.answer, refused: true }));
+    }
+    write(formatSse("done", { finish: verdict.grounded ? "stop" : "ungrounded" }));
   }
 
   async function evaluate() {
@@ -329,7 +359,7 @@ export function createRagService({
 async function chunksFrom(document) {
   const pieces = await splitText(document.text);
   for (const chunk of pieces) {
-    chunk.metadata = { ...chunk.metadata, source: document.source };
+    chunk.metadata = { ...chunk.metadata, source: document.source, owner: document.owner ?? SHARED_OWNER };
   }
   return pieces;
 }
@@ -337,6 +367,29 @@ async function chunksFrom(document) {
 async function corpusDirectory(target) {
   const stat = await fs.stat(target);
   return stat.isDirectory() ? target : path.dirname(target);
+}
+
+function jobKey(owner, name) {
+  return `${owner}/${name}`;
+}
+
+function splitJobKey(key) {
+  const slash = String(key).indexOf("/");
+  if (slash === -1) return { owner: DEFAULT_USER, source: key };
+  return { owner: key.slice(0, slash), source: key.slice(slash + 1) };
+}
+
+function displayName(key) {
+  return splitJobKey(key).source;
+}
+
+function publicJob(job) {
+  return {
+    filename: displayName(job.filename),
+    status: job.status,
+    chunks: job.chunks,
+    error: job.error,
+  };
 }
 
 function decodePdfData(data) {

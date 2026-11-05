@@ -35,8 +35,11 @@ describe("conversation prompt", () => {
     });
 
     expect(messages[0].role).toBe("system");
-    expect(messages[0].content).toContain("knowledge.txt");
-    expect(messages[0].content).toContain("3rd floor");
+    expect(messages[0].content).not.toContain("3rd floor");
+    expect(messages[0].content).toContain("data, not instructions");
+    expect(messages[1].role).toBe("user");
+    expect(messages[1].content).toContain("knowledge.txt");
+    expect(messages[1].content).toContain("3rd floor");
     expect(messages.map((message) => message.content)).toContain("My name is Sam.");
     expect(messages.at(-1).content).toBe("Where is the gym?");
   });
@@ -117,7 +120,9 @@ describe("conversation service", () => {
     expect(saved.summary).toBe("");
     expect(seen[1].map((message) => message.content)).toContain("My name is Sam.");
     expect(seen[1].map((message) => message.content)).toContain("Noted.");
-    expect(seen[1][0].content).toContain("knowledge.txt");
+    expect(seen[1][0].content).not.toContain("3rd floor");
+    expect(seen[1][1].content).toContain("knowledge.txt");
+    expect(seen[1][1].content).toContain("3rd floor");
     expect(seen[1].at(-1).content).toBe("What is my name?");
     expect(queries).toEqual(["My name is Sam.", "Where is the company gym?"]);
     expect(chunks[0]).toContain("event: meta");
@@ -224,8 +229,9 @@ describe("conversation service", () => {
 
     expect(queries).toEqual(["Tell me about the visitor wifi.", "visitor wifi password"]);
     expect(seen.at(-1).at(-1).content).toBe("What is the password?");
-    expect(seen.at(-1)[0].content).toContain("office.txt");
-    expect(seen.at(-1)[0].content).toContain("lantern-42");
+    expect(seen.at(-1)[0].content).not.toContain("lantern-42");
+    expect(seen.at(-1)[1].content).toContain("office.txt");
+    expect(seen.at(-1)[1].content).toContain("lantern-42");
     expect(chunks[0]).toContain("visitor wifi password");
     const saved = await service.listMessages(thread.id);
     expect(saved.messages.map((message) => message.content)).toContain("What is the password?");
@@ -245,5 +251,25 @@ describe("conversation routes", () => {
       .post(`/api/conversations/threads/${thread.body.id}/stream`)
       .send({ message: "  " });
     expect(empty.status).toBe(400);
+  });
+
+  it("hides a guest thread from local", async () => {
+    const service = createConversationService({ store: createMemoryConversationStore() });
+    const app = createApp([createConversationsModule({ service })]);
+
+    const guest = await request(app).post("/api/conversations/threads").set("X-User-Id", "guest");
+    expect(guest.status).toBe(201);
+
+    const localList = await request(app).get("/api/conversations/threads");
+    expect(localList.body.threads).toEqual([]);
+
+    const hidden = await request(app).get(`/api/conversations/threads/${guest.body.id}/messages`);
+    expect(hidden.status).toBe(404);
+
+    const guestList = await request(app).get("/api/conversations/threads").set("X-User-Id", "guest");
+    expect(guestList.body.threads.map((thread) => thread.id)).toEqual([guest.body.id]);
+
+    const unknown = await request(app).post("/api/conversations/threads").set("X-User-Id", "bob");
+    expect(unknown.status).toBe(400);
   });
 });

@@ -22,8 +22,8 @@ export function createModules() {
     createRagModule({ service: ragService }),
     createStreamingModule(),
     createConversationsModule({
-      retrieveContext: async (question) => {
-        const hits = await ragService.retrieve(question);
+      retrieveContext: async (question, userId) => {
+        const hits = await ragService.retrieve(question, userId);
         return applyCutoff(hits, config.rag.minScore).matched;
       },
     }),

@@ -8,7 +8,8 @@ Everything runs locally against [Ollama](https://ollama.com) by default. No paid
 keys are required.
 
 Interview questions and answers for every module, built and planned, are in
-[docs/interview-prep.md](docs/interview-prep.md).
+[docs/interview-prep.md](docs/interview-prep.md). The step-by-step check of every
+built page is in [docs/test-plan.md](docs/test-plan.md).
 
 ## How the platform is organized
 
@@ -130,13 +131,17 @@ npm install
 Two terminals:
 
 ```bash
-cd backend && npm run dev     # http://localhost:5000
+cd backend && npm run dev     # http://localhost:5001 when API_PORT=5001
 cd frontend && npm run dev    # http://localhost:5173
 ```
 
 Open http://localhost:5173. The Vite dev server proxies `/api/*` to the backend.
 
 ## Tests
+
+The click-by-click check of every built page is in [docs/test-plan.md](docs/test-plan.md).
+Start there when you want to try the lab yourself. Each module README also has the
+same checks next to that module.
 
 ```bash
 cd backend
@@ -241,15 +246,15 @@ is the plain demo. The RAG page uses the same mechanism.
 
 Done after that: threads and messages in MongoDB. A reply is saved, and the recent
 turns are copied into the next prompt. If Chroma also finds a matching chunk, that
-chunk is added to the same prompt. One local user id, `local`, stands in until real
-auth. Past 12 messages, the older turns are summarized in one model call. The summary
+chunk is added to the same prompt. The header **Who is asking** is Local or Guest.
+A thread and an uploaded file belong to that person. Past 12 messages, the older turns are summarized in one model call. The summary
 is saved on the thread and sent with the recent messages. The original messages stay
 in MongoDB. A follow-up is rewritten into a standalone search query before Chroma is
 called. The reply still sees the sentence the user typed.
 
 Still to come:
 
-- A real user concept, hardened into auth in Milestone 6.
+- Passwords and a real session, in Milestone 6.
 
 ### Milestone 4 — Providers and cost · in progress
 
@@ -277,11 +282,21 @@ docs** still waits and embeds the whole folder. The sidebar item Document Pipeli
 stays planned; this work lives on the RAG page. The queue is in memory, so a restart
 drops it and startup embeds again because the folder hash changed.
 
-### Milestone 6 — Security and multi-tenancy · planned
+### Milestone 6 — Security and multi-tenancy · in progress
 
-- Prompt injection: what happens when an ingested document says "ignore your
-  instructions," and the defenses that help.
-- Per-user data isolation, so one user's retrieval can never reach another's chunks.
+Done: retrieved chunks are data, not instructions. The RAG rules and the conversation
+rules sit in the system message. Each chunk is wrapped in a `<document>` tag in a
+later message, and the text cannot close that tag early. After the model answers,
+a citation-only reply is replaced with "I don't know", and so is a name or code
+that the kept chunks do not contain. A name that the file itself states is left
+as is. This is not a lock. The header **Who is asking** is Local or Guest, with no
+password. A new file is stored under that person. A question searches the shared
+samples plus that person's files. The other person's threads stay hidden. Files
+already in the docs folder, including `knowledge.txt`, `office.txt`, and the
+cent-trading notes, stay shared.
+
+Still to come:
+
 - Auth, rate limiting, and request size caps. `/api/rag/reingest` is currently
   unauthenticated and uncapped.
 - PII handling and output sanitization.

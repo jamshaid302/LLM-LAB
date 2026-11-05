@@ -194,6 +194,8 @@ returns a canned Ollama response.
 
 ### Manual tests
 
+The full lab, in order, is in [docs/test-plan.md](../../../../docs/test-plan.md). The rows below are this module.
+
 Start the backend and frontend and open **LLM Fundamentals**.
 
 Sampling:
@@ -232,19 +234,19 @@ To check validation without the UI, from PowerShell (`curl.exe`, because plain `
 there is an alias for a different command):
 
 ```powershell
-curl.exe -s -X POST http://localhost:5000/api/fundamentals/complete -H "Content-Type: application/json" -d '{\"prompt\":\"hi\",\"temperature\":9}' -w "  HTTP %{http_code}"
+curl.exe -s -X POST http://127.0.0.1:5001/api/fundamentals/complete -H "Content-Type: application/json" -d '{"prompt":"hi","temperature":9}' -w "  HTTP %{http_code}"
 ```
 
 Expected output: `{"error":"temperature must be a number between 0 and 2"}  HTTP 400`.
 
 ```powershell
-curl.exe -s -X POST http://localhost:5000/api/fundamentals/patterns -H "Content-Type: application/json" -d '{}' -w "  HTTP %{http_code}"
+curl.exe -s -X POST http://127.0.0.1:5001/api/fundamentals/patterns -H "Content-Type: application/json" --data-raw "{}" -w "  HTTP %{http_code}"
 ```
 
 Expected output: `{"error":"Missing 'task'"}  HTTP 400`.
 
 ```powershell
-curl.exe -s -X POST http://localhost:5000/api/fundamentals/structured -H "Content-Type: application/json" -d '{}' -w "  HTTP %{http_code}"
+curl.exe -s -X POST http://127.0.0.1:5001/api/fundamentals/structured -H "Content-Type: application/json" --data-raw "{}" -w "  HTTP %{http_code}"
 ```
 
 Expected output: `{"error":"Missing 'task'"}  HTTP 400`.

@@ -174,7 +174,7 @@ describe("createChromaStore", () => {
 
     const hits = await store.search("where is the gym", 1);
     expect(hits).toEqual([
-      { text: "gym only", score: similarityFromCosineDistance(0.226), source: "knowledge.txt" },
+      { text: "gym only", score: similarityFromCosineDistance(0.226), source: "knowledge.txt", owner: "shared" },
     ]);
   });
 });

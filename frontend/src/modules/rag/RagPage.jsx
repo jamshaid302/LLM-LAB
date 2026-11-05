@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 
 import { readSse } from "../../lib/sse.js";
+import { userHeaders } from "../../lib/user.js";
 
 export default function RagPage() {
   const [messages, setMessages] = useState([]);
@@ -16,7 +17,7 @@ export default function RagPage() {
   const watchTokens = useRef(new Map());
 
   async function loadDocuments() {
-    const res = await fetch("/api/rag/documents");
+    const res = await fetch("/api/rag/documents", { headers: userHeaders() });
     const data = await res.json().catch(() => ({}));
     if (res.ok) setDocuments(data.documents ?? []);
   }
@@ -61,7 +62,7 @@ export default function RagPage() {
     try {
       const res = await fetch("/api/rag/stream", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: userHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ question }),
         signal: controller.signal,
       });
@@ -79,6 +80,8 @@ export default function RagPage() {
           }));
         } else if (event === "token") {
           patchLast((last) => ({ text: last.text + data.text }));
+        } else if (event === "replace") {
+          patchLast(() => ({ text: data.text, refused: Boolean(data.refused) }));
         } else if (event === "error") {
           patchLast((last) => ({ text: last.text || `Error: ${data.error}` }));
         }
@@ -98,7 +101,7 @@ export default function RagPage() {
   async function handleReingest() {
     setLoading(true);
     try {
-      const res = await fetch("/api/rag/reingest", { method: "POST" });
+      const res = await fetch("/api/rag/reingest", { method: "POST", headers: userHeaders() });
       const data = await res.json();
       setMessages((prev) => [
         ...prev,
@@ -121,7 +124,7 @@ export default function RagPage() {
     watchTokens.current.set(filename, token);
     try {
       for (;;) {
-        const res = await fetch(`/api/rag/documents/${encodeURIComponent(filename)}`);
+        const res = await fetch(`/api/rag/documents/${encodeURIComponent(filename)}`, { headers: userHeaders() });
         const data = await res.json().catch(() => ({}));
         if (watchTokens.current.get(filename) !== token) return;
         if (!res.ok) return;
@@ -156,7 +159,7 @@ export default function RagPage() {
         : { filename: file.name, text: await file.text() };
       const res = await fetch("/api/rag/documents", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: userHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify(body),
       });
       const data = await res.json();
@@ -175,7 +178,10 @@ export default function RagPage() {
 
   async function handleRetry(name) {
     try {
-      const res = await fetch(`/api/rag/documents/${encodeURIComponent(name)}/retry`, { method: "POST" });
+      const res = await fetch(`/api/rag/documents/${encodeURIComponent(name)}/retry`, {
+        method: "POST",
+        headers: userHeaders(),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       const id = crypto.randomUUID();
@@ -190,7 +196,10 @@ export default function RagPage() {
   async function handleRemove(name) {
     setLoading(true);
     try {
-      const res = await fetch(`/api/rag/documents/${encodeURIComponent(name)}`, { method: "DELETE" });
+      const res = await fetch(`/api/rag/documents/${encodeURIComponent(name)}`, {
+        method: "DELETE",
+        headers: userHeaders(),
+      });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       watchTokens.current.set(name, (watchTokens.current.get(name) ?? 0) + 1);
@@ -214,7 +223,7 @@ export default function RagPage() {
   async function handleEval() {
     setLoading(true);
     try {
-      const res = await fetch("/api/rag/eval", { method: "POST" });
+      const res = await fetch("/api/rag/eval", { method: "POST", headers: userHeaders() });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       setReport(data);
@@ -259,7 +268,9 @@ export default function RagPage() {
                   Retry
                 </button>
               )}
-              {document.removable ? (
+              {document.shared ? (
+                <span style={styles.kept}>shared</span>
+              ) : document.removable ? (
                 <button
                   type="button"
                   onClick={() => handleRemove(document.name)}

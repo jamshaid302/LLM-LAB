@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { readSse } from "../../lib/sse.js";
+import { userHeaders } from "../../lib/user.js";
 
 export default function ConversationsPage() {
   const [threads, setThreads] = useState([]);
@@ -13,7 +14,7 @@ export default function ConversationsPage() {
   const abortRef = useRef(null);
 
   async function loadThreads() {
-    const res = await fetch("/api/conversations/threads");
+    const res = await fetch("/api/conversations/threads", { headers: userHeaders() });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     setThreads(data.threads);
@@ -23,7 +24,7 @@ export default function ConversationsPage() {
   async function openThread(id) {
     setActiveId(id);
     setError("");
-    const res = await fetch(`/api/conversations/threads/${id}/messages`);
+    const res = await fetch(`/api/conversations/threads/${id}/messages`, { headers: userHeaders() });
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
     setMessages(data.messages);
@@ -42,7 +43,7 @@ export default function ConversationsPage() {
 
   async function newThread() {
     setError("");
-    const res = await fetch("/api/conversations/threads", { method: "POST" });
+    const res = await fetch("/api/conversations/threads", { method: "POST", headers: userHeaders() });
     const data = await res.json();
     if (!res.ok) {
       setError(data.error || `HTTP ${res.status}`);
@@ -83,7 +84,7 @@ export default function ConversationsPage() {
     try {
       const res = await fetch(`/api/conversations/threads/${activeId}/stream`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: userHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ message }),
         signal: controller.signal,
       });

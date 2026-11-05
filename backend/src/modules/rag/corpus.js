@@ -3,6 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { extractPdfText } from "./pdf-text.js";
+import { SHARED_OWNER, USERS } from "../../core/users.js";
 
 const DOCUMENT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/;
 
@@ -30,16 +31,38 @@ function isCorpusFile(name) {
   return lower.endsWith(".txt") || lower.endsWith(".md") || lower.endsWith(".pdf");
 }
 
-async function documentFromBytes(name, bytes) {
+async function documentFromBytes(name, bytes, owner) {
   const text = isPdf(name) ? await extractPdfText(bytes) : bytes.toString("utf8");
-  return { source: name, text };
+  return { source: name, text, owner };
+}
+
+const CORPUS_SCHEMA = "owner-v1";
+
+async function readFileDocument(hash, folder, name, owner) {
+  const bytes = await fs.readFile(path.join(folder, name));
+  hash.update(owner);
+  hash.update("\0");
+  hash.update(name);
+  hash.update("\0");
+  hash.update(bytes);
+  hash.update("\0");
+  return documentFromBytes(name, bytes, owner);
+}
+
+async function directoryExists(dirPath) {
+  try {
+    const stat = await fs.stat(dirPath);
+    return stat.isDirectory();
+  } catch (err) {
+    if (err?.code === "ENOENT") return false;
+    throw err;
+  }
 }
 
 /**
- * Read one file, or every .txt, .md, and .pdf file in a folder. The hash covers the
- * file names and the raw bytes, so adding or editing a file changes it and a restart
- * embeds again. A PDF is hashed as bytes and chunked from its extracted text. Names
- * are sorted so the hash does not depend on directory order.
+ * Read one file, or every .txt, .md, and .pdf file in a folder. Files in the
+ * folder root are shared. Files under users/<id>/ belong to that person. The
+ * hash covers the owner, the file name, and the raw bytes.
  */
 export async function readCorpus(corpusPath) {
   const stat = await fs.stat(corpusPath);
@@ -47,27 +70,44 @@ export async function readCorpus(corpusPath) {
 
   const name = path.basename(corpusPath);
   const bytes = await fs.readFile(corpusPath);
+  const hash = createHash("sha256");
+  hash.update(CORPUS_SCHEMA);
+  hash.update("\0");
+  hash.update(bytes);
   return {
-    documents: [await documentFromBytes(name, bytes)],
-    hash: createHash("sha256").update(bytes).digest("hex"),
+    documents: [await documentFromBytes(name, bytes, SHARED_OWNER)],
+    hash: hash.digest("hex"),
   };
 }
 
 async function readDirectory(dirPath) {
-  const names = (await fs.readdir(dirPath)).filter(isCorpusFile).sort();
-  if (names.length === 0) {
-    throw new Error(`No .txt, .md, or .pdf files in ${dirPath}`);
+  const hash = createHash("sha256");
+  hash.update(CORPUS_SCHEMA);
+  hash.update("\0");
+  const documents = [];
+
+  const rootNames = (await fs.readdir(dirPath, { withFileTypes: true }))
+    .filter((entry) => entry.isFile() && isCorpusFile(entry.name))
+    .map((entry) => entry.name)
+    .sort();
+  for (const name of rootNames) {
+    documents.push(await readFileDocument(hash, dirPath, name, SHARED_OWNER));
   }
 
-  const hash = createHash("sha256");
-  const documents = [];
-  for (const name of names) {
-    const bytes = await fs.readFile(path.join(dirPath, name));
-    hash.update(name);
-    hash.update("\0");
-    hash.update(bytes);
-    hash.update("\0");
-    documents.push(await documentFromBytes(name, bytes));
+  const usersDir = path.join(dirPath, "users");
+  if (await directoryExists(usersDir)) {
+    for (const user of USERS) {
+      const folder = path.join(usersDir, user.id);
+      if (!(await directoryExists(folder))) continue;
+      const names = (await fs.readdir(folder)).filter(isCorpusFile).sort();
+      for (const name of names) {
+        documents.push(await readFileDocument(hash, folder, name, user.id));
+      }
+    }
+  }
+
+  if (documents.length === 0) {
+    throw new Error(`No .txt, .md, or .pdf files in ${dirPath}`);
   }
   return { documents, hash: hash.digest("hex") };
 }

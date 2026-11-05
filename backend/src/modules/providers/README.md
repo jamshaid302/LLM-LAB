@@ -93,6 +93,8 @@ None of these need Ollama.
 
 ### Manual tests
 
+The full lab, in order, is in [docs/test-plan.md](../../../../docs/test-plan.md). The rows below are this module.
+
 Start the API and the frontend. Open **Providers & Cost**.
 
 | Step | Expected result |

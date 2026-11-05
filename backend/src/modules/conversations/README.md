@@ -44,7 +44,7 @@ last week?", can sit on top of MongoDB later. It does not replace it.
 ```
 New chat
    → POST /api/conversations/threads
-   → MongoDB threads          one document, userId "local", title "New chat"
+   → MongoDB threads          one document, userId from X-User-Id, title "New chat"
 
 Send
    → save the user message
@@ -52,7 +52,7 @@ Send
    → if this is a follow-up, rewrite it into one standalone search query
    → retrieve chunks with that query and drop any below the cutoff
    → copy the summary plus the original recent messages into the prompt
-   → prompt                  system text + transcript + any documents
+   → prompt                  system rules, then untrusted documents in their own message, then the transcript
    → Ollama stream           token events over SSE
    → save the assistant message, including a partial one if Stop was pressed
 ```
@@ -145,6 +145,8 @@ None of these need MongoDB or Ollama.
 
 ### Manual tests
 
+The full lab, in order, is in [docs/test-plan.md](../../../../docs/test-plan.md). The rows below are this module.
+
 From `backend/`, start MongoDB if it is not already up:
 
 ```bash
@@ -161,12 +163,13 @@ Start the API and the frontend. Open **Conversations**.
 | Send "Where is the company gym?"           | The reply says 3rd floor, and a `knowledge.txt` source is listed                 |
 | Set `CONVERSATION_HISTORY_LIMIT=2`, restart, and send a third message | A card titled **Earlier messages summarized** appears. The first messages are still listed. A question about the first fact still works |
 | Refresh the page                           | The same thread and both answers are still there                                 |
+| Switch **Who is asking** to Guest, click **New chat**, then switch back to Local | Guest's thread is absent from Local's list. Switch to Guest and it is there again |
 | Press **Stop** during a long reply         | The partial text stays, with a Stopped line, and it is still there after refresh |
 | Stop the API and start it again            | The log says `connected, N threads`. The chat is still there                     |
 
 ## Known limitations
 
-- **One local user.** Every thread belongs to `userId: "local"`. There is no login.
+- **A switch, not a login.** The header **Who is asking** is Local or Guest. A thread belongs to that person. The other person's list does not include it, and opening it returns 404. There is no password.
 - **The search rewrite is another model call.** A follow-up costs one extra completion before retrieval. `llama3.2:1b` sometimes puts the answer inside the query. The original sentence is still what the reply sees.
 - **The summary can drop a detail.** It is a model paragraph, not a lossless copy. The
   full messages are still in MongoDB if you need to check. `llama3.2:1b` often drops

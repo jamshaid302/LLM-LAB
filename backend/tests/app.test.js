@@ -62,7 +62,7 @@ describe("RAG module routes", () => {
 
     expect(res.status).toBe(200);
     expect(res.body.answer).toBe("answer to What is RAG?");
-    expect(service.ask).toHaveBeenCalledWith("What is RAG?");
+    expect(service.ask).toHaveBeenCalledWith("What is RAG?", "local");
   });
 
   it("rejects a missing question with 400 without calling the model", async () => {
