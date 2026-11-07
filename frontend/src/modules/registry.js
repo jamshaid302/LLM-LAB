@@ -42,16 +42,17 @@ export const modules = [
     id: "semantic-search",
     name: "Semantic Search",
     group: "Retrieval",
-    status: "planned",
-    description:
-      "Embeddings outside of chat: search, deduplication, clustering, and recommendations.",
+    status: "ready",
+    description: "Search the knowledge base and get the chunks and scores back. No chat model.",
+    Page: lazy(() => import("./semantic-search/SemanticSearchPage.jsx")),
   },
   {
     id: "documents",
     name: "Document Pipeline",
     group: "Retrieval",
-    status: "planned",
-    description: "PDF and Markdown upload, parsing, and embedding as background jobs with progress.",
+    status: "ready",
+    description: "Upload a file, watch it embed, and retry or remove that job.",
+    Page: lazy(() => import("./documents/DocumentsPage.jsx")),
   },
   {
     id: "streaming",

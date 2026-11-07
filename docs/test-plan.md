@@ -125,7 +125,34 @@ The header at the top of every page is **Who is asking**. The choices are Local 
 | Switch to Local and open **Conversations** | That thread is not in the list |
 | Switch back to Guest and click **Remove** on `guest-note.md` | The file is gone |
 
-## 5. Streaming Chat
+## 5. Semantic Search
+
+Open **Semantic Search**. This page does not write an answer. It lists chunks.
+
+| Step | Expected result |
+| --- | --- |
+| Search `Where is the company gym?` | A kept chunk from `knowledge.txt` mentions the 3rd floor. The score is about 0.8. There is no generated sentence |
+| Search `What is the capital of Brazil?` | The page says nothing scored high enough. Dropped scores are about 0.39 |
+| Search `What is the visitor wifi password?` | A kept chunk from `office.txt` contains `lantern-42` |
+| Switch **Who is asking** to Guest and search the gym question | The same shared `knowledge.txt` chunk is kept |
+
+Switch **Who is asking** back to Local when you are done.
+
+## 6. Document Pipeline
+
+Open **Document Pipeline**. Shared files say `ready` and `shared`.
+
+| Step | Expected result |
+| --- | --- |
+| Read the list | `knowledge.txt`, `office.txt`, and the cent-trading notes are listed. They have no Remove button |
+| Upload a small `.md` named `pipeline-note.md` whose text is `The visitor parking code is maple-17.` | The row appears, then its status becomes `ready` |
+| Open **Semantic Search** and search `maple-17` | A kept chunk names `pipeline-note.md` |
+| Return to **Document Pipeline** and click **Remove** | The row is gone |
+| Switch **Who is asking** to Guest | `pipeline-note.md` is not listed. The shared files still are |
+
+Switch **Who is asking** back to Local. Delete `pipeline-note.md` first if it is still listed.
+
+## 7. Streaming Chat
 
 Open **Streaming Chat**. This page has no documents.
 
@@ -135,7 +162,7 @@ Open **Streaming Chat**. This page has no documents.
 | Press **Stop** during that reply | The numbers already shown stay. A Stopped line appears. Nothing more arrives |
 | Refresh the page | The chat is gone. This page does not save threads |
 
-## 6. Conversations
+## 8. Conversations
 
 MongoDB must be up from step 1. Open **Conversations**.
 
@@ -158,8 +185,10 @@ Summary. In `backend/.env`, set `CONVERSATION_HISTORY_LIMIT=2`, restart the API,
 
 Put `CONVERSATION_HISTORY_LIMIT` back to 12 and restart when you are done.
 
-## 7. What you are not testing yet
+## 9. What you are not testing yet
 
-These sidebar items say **soon** and have no page: Advanced RAG, Semantic Search, Document Pipeline, LLM Evaluation, Hallucination Detection, AI Agents, Multi-Agent Systems, Security, Observability, Deployment, Multimodal AI, and Fine-Tuning.
+These sidebar items say **soon** and have no page: Advanced RAG, LLM Evaluation, Hallucination Detection, AI Agents, Multi-Agent Systems, Security, Observability, Deployment, Multimodal AI, and Fine-Tuning.
+
+A hosted provider, Multimodal AI, and Fine-Tuning also need something this lab does not have yet: a paid API key, a vision model, and a GPU notebook. The build steps and the tests for those three are in [later-modules.md](later-modules.md). Run them when the key, the model, or the notebook is available. Until then they stay **soon**.
 
 There is no password. The header **Who is asking** is Local or Guest. Upload, delete, and re-ingest stay open on this machine for the person selected. The document fence does not guarantee the model will ignore a file.

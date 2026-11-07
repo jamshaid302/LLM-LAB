@@ -9,7 +9,9 @@ keys are required.
 
 Interview questions and answers for every module, built and planned, are in
 [docs/interview-prep.md](docs/interview-prep.md). The step-by-step check of every
-built page is in [docs/test-plan.md](docs/test-plan.md).
+built page is in [docs/test-plan.md](docs/test-plan.md). The build and test steps for
+a hosted provider, multimodal, and fine-tuning are in
+[docs/later-modules.md](docs/later-modules.md). Those three are not built.
 
 ## How the platform is organized
 
@@ -75,28 +77,30 @@ Each built module has its own README covering what it teaches, how it works, how
 implemented, its API, and a test plan with automated and manual checks. This file only
 summarizes them.
 
-| Module                  | Status    | What it teaches                                                                      | Docs                                                  |
-| ----------------------- | --------- | ------------------------------------------------------------------------------------ | ----------------------------------------------------- |
-| LLM Fundamentals        | **ready** | Tokens, sampling, prompt patterns, and validated JSON output                         | [README](backend/src/modules/fundamentals/README.md)  |
-| Providers & Cost        | **ready** | Two local models behind one chat call, with tokens, latency, and a $0 price          | [README](backend/src/modules/providers/README.md)     |
-| RAG                     | **ready** | Chunking, embeddings, similarity search, and grounding answers in your own documents | [README](backend/src/modules/rag/README.md)           |
-| Advanced RAG            | planned   | Hybrid search, reranking, and query rewriting, measured against basic RAG            | —                                                     |
-| Semantic Search         | planned   | Embeddings outside chat: search, deduplication, clustering, recommendations          | —                                                     |
-| Document Pipeline       | planned   | PDF and Markdown upload, parsing, and embedding as background jobs                   | —                                                     |
-| Streaming Chat          | **ready** | Token-by-token answers over Server-Sent Events, with cancellation                    | [README](backend/src/modules/streaming/README.md)     |
-| Conversations           | **ready** | Threads and messages in MongoDB, replayed into the next prompt alongside Chroma      | [README](backend/src/modules/conversations/README.md) |
-| LLM Evaluation          | planned   | Golden datasets, retrieval metrics, and LLM-as-judge scoring                         | —                                                     |
-| Hallucination Detection | planned   | Checking that answers and citations are supported by the sources                     | —                                                     |
-| AI Agents               | planned   | Tool calling, a bounded reasoning loop, and agent evaluation                         | —                                                     |
-| Multi-Agent Systems     | planned   | Agents handing work to each other, and when that is overhead                         | —                                                     |
-| Security                | planned   | Prompt injection, PII, output sanitization, per-user data isolation                  | —                                                     |
-| Observability           | planned   | Tracing requests with latency and token cost                                         | —                                                     |
-| Deployment              | planned   | Docker, CI, rate limiting, graceful degradation                                      | —                                                     |
-| Multimodal AI           | planned   | Local vision and audio models, quantization trade-offs                               | —                                                     |
-| Fine-Tuning             | planned   | SFT, LoRA, and QLoRA on a GPU worker, compared with the base model                   | —                                                     |
+| Module                  | Status    | What it teaches                                                                      | Docs                                                    |
+| ----------------------- | --------- | ------------------------------------------------------------------------------------ | ------------------------------------------------------- |
+| LLM Fundamentals        | **ready** | Tokens, sampling, prompt patterns, and validated JSON output                         | [README](backend/src/modules/fundamentals/README.md)    |
+| Providers & Cost        | **ready** | Two local models behind one chat call, with tokens, latency, and a $0 price          | [README](backend/src/modules/providers/README.md)       |
+| RAG                     | **ready** | Chunking, embeddings, similarity search, and grounding answers in your own documents | [README](backend/src/modules/rag/README.md)             |
+| Advanced RAG            | planned   | Hybrid search, reranking, and query rewriting, measured against basic RAG            | —                                                       |
+| Semantic Search         | **ready** | Search the knowledge base and get the chunks and scores back, with no chat model     | [README](backend/src/modules/semantic-search/README.md) |
+| Document Pipeline       | **ready** | Upload a file, watch the embed job, and retry or remove it                           | [README](backend/src/modules/documents/README.md)       |
+| Streaming Chat          | **ready** | Token-by-token answers over Server-Sent Events, with cancellation                    | [README](backend/src/modules/streaming/README.md)       |
+| Conversations           | **ready** | Threads and messages in MongoDB, replayed into the next prompt alongside Chroma      | [README](backend/src/modules/conversations/README.md)   |
+| LLM Evaluation          | planned   | Golden datasets, retrieval metrics, and LLM-as-judge scoring                         | —                                                       |
+| Hallucination Detection | planned   | Checking that answers and citations are supported by the sources                     | —                                                       |
+| AI Agents               | planned   | Tool calling, a bounded reasoning loop, and agent evaluation                         | —                                                       |
+| Multi-Agent Systems     | planned   | Agents handing work to each other, and when that is overhead                         | —                                                       |
+| Security                | planned   | Prompt injection, PII, output sanitization, per-user data isolation                  | —                                                       |
+| Observability           | planned   | Tracing requests with latency and token cost                                         | —                                                       |
+| Deployment              | planned   | Docker, CI, rate limiting, graceful degradation                                      | —                                                       |
+| Multimodal AI           | planned   | Local vision and audio models, quantization trade-offs                               | [Plan](docs/later-modules.md#multimodal)                |
+| Fine-Tuning             | planned   | SFT, LoRA, and QLoRA on a GPU worker, compared with the base model                   | [Plan](docs/later-modules.md#fine-tuning)               |
 
-Planned modules appear in the sidebar with a "soon" badge and get a README when they are
-built. The [roadmap](#roadmap) below is the build order.
+Planned modules appear in the sidebar with a "soon" badge and get a module README when
+the code exists. The hosted adapter, the vision model, and the fine-tune are written up
+in [docs/later-modules.md](docs/later-modules.md) so they can be built later. The
+[roadmap](#roadmap) below is the build order.
 
 **Fine-tuning is the one exception to "everything in one backend."** Training needs a
 CUDA GPU and runs for minutes to hours, so it will run as a separate Python job (on
@@ -265,7 +269,8 @@ at a sample hosted rate of $0.15 in and $0.60 out, and that figure is labeled as
 
 Still to come:
 
-- A hosted adapter, with fallback and retry.
+- A hosted adapter, with fallback and retry. The steps are in
+  [docs/later-modules.md](docs/later-modules.md#hosted-provider). It waits on a paid API key.
 - Caching, including semantic caching of similar questions.
 - Choosing the small model for an easy request and the larger one only when needed.
 
@@ -278,8 +283,7 @@ PDF is stored as bytes and chunked from the text extracted in Node. Chunks keep 
 file name. Remove waits out an in-flight embed of that file, then drops the file and
 its chunks together. `knowledge.txt` and `office.txt` stay. A path, a PDF with no
 extractable text, and an empty file are rejected before a job starts. **Re-ingest
-docs** still waits and embeds the whole folder. The sidebar item Document Pipeline
-stays planned; this work lives on the RAG page. The queue is in memory, so a restart
+docs** still waits and embeds the whole folder. The Document Pipeline page lists the same jobs. The queue is in memory, so a restart
 drops it and startup embeds again because the folder hash changed.
 
 ### Milestone 6 — Security and multi-tenancy · in progress
@@ -301,10 +305,16 @@ Still to come:
   unauthenticated and uncapped.
 - PII handling and output sanitization.
 
-### Milestone 7 — Semantic search beyond chat · planned
+### Milestone 7 — Semantic search beyond chat · in progress
 
-Embeddings used for search, deduplication, clustering, and recommendations. Most
-products need this more than they need a chatbot.
+Done: a search page embeds the query and returns the nearest chunks with their scores.
+It does not call the chat model. The cutoff is the same line RAG uses, and chunks under
+it are listed as dropped. Who is asking limits the search to the shared samples plus
+that person's files.
+
+Still to come:
+
+- Deduplication, clustering, and recommendations.
 
 ### Milestone 8 — Advanced retrieval · planned
 
@@ -346,4 +356,5 @@ Multimodal (local vision and audio, quantization trade-offs), then fine-tuning (
 LoRA, QLoRA) as a Python job on a free Colab or Kaggle GPU, compared against the base
 model. Fine-tuning is last on purpose: it is the wrong answer to most problems that
 retrieval or a better prompt solves more cheaply, and understanding _why_ matters more
-than running one.
+than running one. The implementation and test steps are in
+[docs/later-modules.md](docs/later-modules.md). Neither module is built.

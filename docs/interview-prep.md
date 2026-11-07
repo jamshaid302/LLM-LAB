@@ -9,7 +9,9 @@ say "the way I would build it is…". Claiming you shipped something you only re
 is easy to catch.
 
 Related docs: [LLM Fundamentals](../backend/src/modules/fundamentals/README.md),
-[RAG](../backend/src/modules/rag/README.md).
+[RAG](../backend/src/modules/rag/README.md),
+[Semantic Search](../backend/src/modules/semantic-search/README.md),
+[later modules](later-modules.md) (hosted provider, multimodal, fine-tuning — not built).
 
 ---
 
@@ -228,9 +230,12 @@ MongoDB should receive a validated object, the same as any other Express route.
 
 In this project the chat call is `completeOllamaChatResult`. The request names the model.
 `llama3.2:1b` and `qwen2.5:7b` both go through that function, and conversation summaries
-use it too. The rest of a hosted setup would be a second function with the same return
-shape. That second function is not built. There is no fallback when a call fails, and no
-cache.
+use it too. The way I would add a hosted provider is a second function with that same
+return shape: text, prompt tokens, and completion tokens. The key stays in `backend/.env`.
+A 401 comes back as an error. A timeout or a 503 is retried once, then the local model
+answers and the record says it fell back. The steps and the tests are in
+[docs/later-modules.md](later-modules.md#hosted-provider). That function is not built.
+There is no fallback when a call fails, and no cache.
 
 ### How do you track cost?
 
@@ -267,14 +272,18 @@ words, so you keep the original query in the hybrid search too.
 
 ---
 
-## Planned — semantic search
+## Built — semantic search
 
 ### How is semantic search different from RAG?
 
-RAG uses the search result as context for a generated answer. Semantic search returns
-the result itself: "find notes like this one," deduplicate tickets, cluster feedback,
-recommend a related article. Many products need that and do not need a chatbot. The
-embedding step is the same.
+In this project the Semantic Search page embeds the query and returns the nearest
+chunks, each with a score and a file name. The chat model is not called. RAG uses that
+same search as context for a generated answer. The cutoff is shared, so a weak neighbor
+is listed as dropped on the search page and is withheld from the model on the RAG page.
+Who is asking limits both to the shared samples plus that person's files.
+
+Deduplication, clustering, and recommendations are the same embedding idea. They are
+not built.
 
 ---
 
@@ -291,7 +300,9 @@ writes the vectors. The page polls until the status is `ready` or `failed`. A fa
 job can be retried without sending the file again. Chunks keep the uploaded name.
 Remove waits until an in-flight embed of that file finishes, then deletes the file and
 drops its chunks together. `knowledge.txt` and `office.txt` cannot be removed. A
-folder path and an empty file are rejected.
+folder path and an empty file are rejected. The Document Pipeline page lists those
+same jobs for the person selected in **Who is asking**. The RAG page still uploads
+through its own route, and both routes share the one in-process queue.
 
 ### How would you run that job outside the API process?
 
@@ -462,12 +473,15 @@ payment API, and it gets the same treatment: timeout, retry once, then fail.
 
 ### What changes when the input is an image or audio?
 
-The model can read more than text, but your pipeline still has to. An image question
-sends the image plus the text. A document scan is often "vision model extracts text,
-then the normal RAG pipeline." Audio is speech-to-text first, then the same chat path.
-The new costs are file size, latency, and a second model. Quantization makes a local
-model smaller and faster and slightly worse. You measure the quality drop before you
-commit to it.
+The way I would build it is a vision model in Ollama, starting with `moondream`. The
+message carries the question and the image as base64. A scanned page is extracted to
+text, and that text goes through the RAG pipeline this project already has. Audio is
+speech-to-text first, then the same chat path. The image and the audio are not
+embedded. Quantization makes a local model smaller and faster and slightly worse. I
+would run the same ten images on two sizes and keep the smaller one only when it still
+reads the codes. The steps are in
+[docs/later-modules.md](later-modules.md#multimodal). This is not built. This machine
+has no vision model pulled.
 
 ---
 
@@ -478,9 +492,12 @@ commit to it.
 Supervised fine-tuning continues training on your input-output pairs so the model
 imitates them. LoRA does not retrain every weight. It trains small adapter matrices,
 which is much cheaper and easier to swap. QLoRA does that while the base model is
-loaded in a compressed form, so it fits on a smaller GPU. You still need a held-out set.
-If the tuned model does not beat the base model plus a good prompt on that set, you
-throw the adapter away.
+loaded in 4-bit, so it fits a free Colab T4. The way I would build it is a notebook
+outside this repo, forty training rows and twenty held-out rows, for a format rather
+than for facts. The adapter stays only when it beats the base model on that held-out
+set. A win is exported to GGUF and loaded with `ollama create`. The steps are in
+[docs/later-modules.md](later-modules.md#fine-tuning). This is not built. This machine
+has no Python and no CUDA GPU.
 
 ### Why is fine-tuning a poor default?
 

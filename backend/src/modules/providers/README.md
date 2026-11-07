@@ -106,7 +106,7 @@ Start the API and the frontend. Open **Providers & Cost**.
 
 ## Known limitations
 
-- **Only Ollama.** There is no hosted adapter, no fallback when a call fails, and no cache.
+- **Only Ollama.** There is no hosted adapter, no fallback when a call fails, and no cache. The way to add a paid provider later, including the tests, is in [docs/later-modules.md](../../../../docs/later-modules.md#hosted-provider).
 - **The log forgets on restart.** It is not in MongoDB.
 - **Other pages do not all write this log.** Fundamentals, RAG, streaming, and conversations still call Ollama on their own routes. Summaries share the chat function, and this page is the one that records the price.
 - **Embeddings are not priced.** This record is for chat calls.
