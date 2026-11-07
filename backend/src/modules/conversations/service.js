@@ -31,6 +31,7 @@ export function createConversationService({
   retrieveContext = async () => [],
   userId = config.conversations.userId,
   historyLimit = config.conversations.historyLimit,
+  trace,
 } = {}) {
   function requireStore() {
     const current = getStore ? getStore() : store;
@@ -76,7 +77,9 @@ export function createConversationService({
       messages: history.recent,
       question: text,
     });
+    const retrievalStarted = Date.now();
     const docs = await retrieveContext(searchQuery, actor);
+    const retrievalMs = Date.now() - retrievalStarted;
     const prompt = buildConversationMessages({
       history: history.recent,
       docs,
@@ -98,18 +101,42 @@ export function createConversationService({
 
     let answer = "";
     let stopped = false;
+    let counts = {};
+    let error = null;
+    const generationStarted = Date.now();
     try {
-      await streamChat({
-        messages: prompt,
-        signal,
-        onToken(token) {
-          answer += token;
-          write(formatSse("token", { text: token }));
-        },
-      });
+      counts =
+        (await streamChat({
+          messages: prompt,
+          signal,
+          onToken(token) {
+            answer += token;
+            write(formatSse("token", { text: token }));
+          },
+        })) ?? {};
     } catch (err) {
-      if (!isAbortError(err) && !signal?.aborted) throw err;
+      if (!isAbortError(err) && !signal?.aborted) {
+        error = err.message;
+        throw err;
+      }
       stopped = true;
+    } finally {
+      if (typeof trace === "function") {
+        trace({
+          route: "conversations.reply",
+          userId: actor,
+          retrievalMs,
+          generationMs: Date.now() - generationStarted,
+          promptTokens: counts.promptTokens ?? null,
+          completionTokens: counts.completionTokens ?? null,
+          refused: false,
+          sources: (docs ?? []).map((doc) => ({
+            source: doc.source ?? null,
+            score: doc.score ?? null,
+          })),
+          error,
+        });
+      }
     }
 
     if (answer) {

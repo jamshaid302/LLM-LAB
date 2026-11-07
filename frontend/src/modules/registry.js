@@ -35,8 +35,9 @@ export const modules = [
     id: "advanced-rag",
     name: "Advanced RAG",
     group: "Retrieval",
-    status: "planned",
-    description: "Hybrid search, reranking, and query rewriting, measured against basic RAG.",
+    status: "ready",
+    description: "Keyword plus vector search, measured against the current retriever.",
+    Page: lazy(() => import("./advanced-rag/AdvancedRagPage.jsx")),
   },
   {
     id: "semantic-search",
@@ -110,8 +111,9 @@ export const modules = [
     id: "observability",
     name: "Observability",
     group: "Production",
-    status: "planned",
-    description: "Tracing a request through retrieval and generation, with latency and token costs.",
+    status: "ready",
+    description: "One trace per RAG or chat request: retrieval, generation, tokens, and kept chunks.",
+    Page: lazy(() => import("./observability/ObservabilityPage.jsx")),
   },
   {
     id: "deployment",

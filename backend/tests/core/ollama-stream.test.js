@@ -23,7 +23,12 @@ describe("takeCompleteLines", () => {
 
 describe("tokenFromOllamaLine", () => {
   it("reads the token and the done flag", () => {
-    expect(tokenFromOllamaLine(ollamaLine("Hi"))).toEqual({ token: "Hi", done: false });
+    expect(tokenFromOllamaLine(ollamaLine("Hi"))).toEqual({
+      token: "Hi",
+      done: false,
+      promptTokens: null,
+      completionTokens: null,
+    });
     expect(tokenFromOllamaLine(ollamaLine("", true)).done).toBe(true);
   });
 });

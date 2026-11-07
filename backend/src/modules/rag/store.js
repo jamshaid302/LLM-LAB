@@ -73,6 +73,15 @@ export function createMemoryStore(embeddings) {
           owner: doc.metadata?.owner ?? null,
         }));
     },
+    async list(userId) {
+      return vectorStore.memoryVectors
+        .filter((item) => visibleTo(item.metadata?.owner, userId))
+        .map((item) => ({
+          text: item.content,
+          source: item.metadata?.source ?? null,
+          owner: item.metadata?.owner ?? null,
+        }));
+    },
   };
 }
 
@@ -179,6 +188,20 @@ export function createChromaStore({
         text,
         score: similarityFromCosineDistance(distances[index]),
         source: metadatas[index]?.source,
+        owner: metadatas[index]?.owner ?? null,
+      }));
+    },
+    async list(userId) {
+      const current = await open();
+      const result = await current.get({
+        include: ["documents", "metadatas"],
+        ...(userId ? { where: { $or: [{ owner: "shared" }, { owner: userId }] } } : {}),
+      });
+      const documents = result.documents ?? [];
+      const metadatas = result.metadatas ?? [];
+      return documents.map((text, index) => ({
+        text,
+        source: metadatas[index]?.source ?? null,
         owner: metadatas[index]?.owner ?? null,
       }));
     },

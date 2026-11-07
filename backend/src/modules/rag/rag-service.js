@@ -5,9 +5,9 @@ import { fileURLToPath } from "node:url";
 import { DEFAULT_USER, SHARED_OWNER } from "../../core/users.js";
 import { config } from "../../core/config.js";
 import { HttpError } from "../../core/http.js";
-import { completeOllamaChat, streamOllamaChat } from "../../core/ollama-stream.js";
+import { completeOllamaChat, completeOllamaChatResult, streamOllamaChat } from "../../core/ollama-stream.js";
 import { createEmbeddings } from "../../core/ollama.js";
-import { formatSse } from "../../core/sse.js";
+import { formatSse, isAbortError } from "../../core/sse.js";
 
 import { splitText } from "./chunking.js";
 import { documentName, isProtectedDocument, readCorpus } from "./corpus.js";
@@ -32,12 +32,14 @@ export const QUESTIONS_PATH = path.join(moduleDir, "eval", "questions.json");
 export function createRagService({
   llm = {
     invoke: (messages) => completeOllamaChat({ messages, options: { temperature: 0 } }),
+    complete: (messages) => completeOllamaChatResult({ messages, options: { temperature: 0 } }),
   },
   embeddings = createEmbeddings(),
   corpusPath = DOCS_DIR,
   questionsPath = QUESTIONS_PATH,
   topK = config.rag.topK,
   minScore = config.rag.minScore,
+  trace,
   store,
   storeKind = "memory",
   chromaUrl = config.rag.chromaUrl,
@@ -242,14 +244,19 @@ export function createRagService({
     return { filename: name, chunks: result.chunks, store: result.store };
   }
 
-  async function retrieve(question, userId = DEFAULT_USER) {
-    const hits = await vectorStore.search(question, topK, userId);
+  async function retrieve(question, userId = DEFAULT_USER, k = topK) {
+    const hits = await vectorStore.search(question, k, userId);
     return hits.map((hit) => ({
       text: hit.text,
       score: hit.score,
       source: hit.source ?? null,
       owner: hit.owner ?? null,
     }));
+  }
+
+  async function listChunks(userId = DEFAULT_USER) {
+    if (typeof vectorStore.list !== "function") return [];
+    return vectorStore.list(userId);
   }
 
   async function prepare(question, userId = DEFAULT_USER) {
@@ -282,15 +289,61 @@ export function createRagService({
   }
 
   async function ask(question, userId = DEFAULT_USER) {
+    const retrievalStarted = Date.now();
     const prepared = await prepare(question, userId);
+    const retrievalMs = Date.now() - retrievalStarted;
     const { messages, ...result } = prepared;
-    if (prepared.refused) return result;
-    const verdict = groundAnswer(await llm.invoke(messages), result.matchedSources);
-    return { ...result, answer: verdict.answer, refused: !verdict.grounded };
+    if (prepared.refused) {
+      recordTrace(trace, {
+        route: "rag.ask",
+        userId,
+        retrievalMs,
+        generationMs: null,
+        refused: true,
+        sources: result.matchedSources,
+        dropped: result.droppedSources,
+      });
+      return result;
+    }
+
+    const generationStarted = Date.now();
+    try {
+      const completed =
+        typeof llm.complete === "function" ? await llm.complete(messages) : { text: await llm.invoke(messages) };
+      const text = typeof completed === "string" ? completed : completed.text;
+      const generationMs = Date.now() - generationStarted;
+      const verdict = groundAnswer(text, result.matchedSources);
+      recordTrace(trace, {
+        route: "rag.ask",
+        userId,
+        retrievalMs,
+        generationMs,
+        promptTokens: completed.promptTokens ?? null,
+        completionTokens: completed.completionTokens ?? null,
+        refused: !verdict.grounded,
+        sources: result.matchedSources,
+        dropped: result.droppedSources,
+      });
+      return { ...result, answer: verdict.answer, refused: !verdict.grounded };
+    } catch (err) {
+      recordTrace(trace, {
+        route: "rag.ask",
+        userId,
+        retrievalMs,
+        generationMs: Date.now() - generationStarted,
+        refused: false,
+        sources: result.matchedSources,
+        dropped: result.droppedSources,
+        error: err.message,
+      });
+      throw err;
+    }
   }
 
   async function streamAnswer(question, { signal, write, userId = DEFAULT_USER }) {
+    const retrievalStarted = Date.now();
     const prepared = await prepare(question, userId);
+    const retrievalMs = Date.now() - retrievalStarted;
     write(
       formatSse("meta", {
         refused: prepared.refused,
@@ -302,23 +355,56 @@ export function createRagService({
     if (prepared.refused) {
       write(formatSse("token", { text: prepared.answer }));
       write(formatSse("done", { finish: "refused" }));
+      recordTrace(trace, {
+        route: "rag.stream",
+        userId,
+        retrievalMs,
+        generationMs: null,
+        refused: true,
+        sources: prepared.matchedSources,
+        dropped: prepared.droppedSources,
+      });
       return;
     }
 
     const parts = [];
-    await streamChat({
-      messages: prepared.messages,
-      signal,
-      onToken(token) {
-        parts.push(token);
-        write(formatSse("token", { text: token }));
-      },
-    });
-    const verdict = groundAnswer(parts.join(""), prepared.matchedSources);
-    if (!verdict.grounded) {
-      write(formatSse("replace", { text: verdict.answer, refused: true }));
+    const generationStarted = Date.now();
+    let counts = {};
+    let refused = false;
+    let error = null;
+    try {
+      counts =
+        (await streamChat({
+          messages: prepared.messages,
+          signal,
+          onToken(token) {
+            parts.push(token);
+            write(formatSse("token", { text: token }));
+          },
+        })) ?? {};
+      const verdict = groundAnswer(parts.join(""), prepared.matchedSources);
+      refused = !verdict.grounded;
+      if (!verdict.grounded) {
+        write(formatSse("replace", { text: verdict.answer, refused: true }));
+      }
+      write(formatSse("done", { finish: verdict.grounded ? "stop" : "ungrounded" }));
+    } catch (err) {
+      if (!isAbortError(err)) error = err.message;
+      throw err;
+    } finally {
+      recordTrace(trace, {
+        route: "rag.stream",
+        userId,
+        retrievalMs,
+        generationMs: Date.now() - generationStarted,
+        promptTokens: counts.promptTokens ?? null,
+        completionTokens: counts.completionTokens ?? null,
+        refused,
+        sources: prepared.matchedSources,
+        dropped: prepared.droppedSources,
+        error,
+      });
     }
-    write(formatSse("done", { finish: verdict.grounded ? "stop" : "ungrounded" }));
   }
 
   async function evaluate() {
@@ -343,6 +429,7 @@ export function createRagService({
     ask,
     streamAnswer,
     retrieve,
+    listChunks,
     evaluate,
     get chunkCount() {
       return chunkCount;
@@ -354,6 +441,19 @@ export function createRagService({
       return vectorStore.kind;
     },
   };
+}
+
+function recordTrace(trace, record) {
+  if (typeof trace !== "function") return;
+  trace({
+    ...record,
+    sources: briefHits(record.sources),
+    dropped: briefHits(record.dropped),
+  });
+}
+
+function briefHits(hits) {
+  return (hits ?? []).map((hit) => ({ source: hit.source ?? null, score: hit.score ?? null }));
 }
 
 async function chunksFrom(document) {

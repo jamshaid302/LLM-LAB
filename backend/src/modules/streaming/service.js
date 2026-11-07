@@ -12,6 +12,7 @@ export function createStreamingService({
       model: config.ollama.chatModel,
       ...args,
     }),
+  trace,
 } = {}) {
   async function chat({ message, signal, write }) {
     const text = typeof message === "string" ? message.trim() : "";
@@ -20,14 +21,35 @@ export function createStreamingService({
       throw new HttpError(400, `Message must be at most ${MAX_MESSAGE} characters`);
     }
 
-    await streamChat({
-      messages: [{ role: "user", content: text }],
-      signal,
-      onToken(token) {
-        write(formatSse("token", { text: token }));
-      },
-    });
-    write(formatSse("done", { finish: "stop" }));
+    const started = Date.now();
+    let counts = {};
+    let error = null;
+    try {
+      counts =
+        (await streamChat({
+          messages: [{ role: "user", content: text }],
+          signal,
+          onToken(token) {
+            write(formatSse("token", { text: token }));
+          },
+        })) ?? {};
+      write(formatSse("done", { finish: "stop" }));
+    } catch (err) {
+      if (err?.name !== "AbortError") error = err.message;
+      throw err;
+    } finally {
+      if (typeof trace === "function") {
+        trace({
+          route: "streaming.chat",
+          retrievalMs: null,
+          generationMs: Date.now() - started,
+          promptTokens: counts.promptTokens ?? null,
+          completionTokens: counts.completionTokens ?? null,
+          refused: false,
+          error,
+        });
+      }
+    }
   }
 
   return { chat };

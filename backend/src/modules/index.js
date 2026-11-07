@@ -1,14 +1,20 @@
+import fs from "node:fs/promises";
+
 import { config } from "../core/config.js";
 
 import { createConversationsModule } from "./conversations/index.js";
 import { createDocumentPipelineModule } from "./documents/index.js";
+import { createAdvancedRagModule } from "./advanced-rag/index.js";
 import { createFundamentalsModule } from "./fundamentals/index.js";
+import { createObservabilityModule } from "./observability/index.js";
+import { createTraceLog } from "./observability/trace-log.js";
 import { createProvidersModule } from "./providers/index.js";
-import { applyCutoff } from "./rag/retrieval.js";
-import { createRagService } from "./rag/rag-service.js";
+import { applyCutoff, scoreRetrieval } from "./rag/retrieval.js";
+import { QUESTIONS_PATH, createRagService } from "./rag/rag-service.js";
 import { createRagModule } from "./rag/index.js";
 import { createSemanticSearchModule } from "./semantic-search/index.js";
 import { createStreamingModule } from "./streaming/index.js";
+import { createStreamingService } from "./streaming/service.js";
 
 /**
  * Every module exposes { id, name, router, init?, health? } and is mounted at /api/<id>.
@@ -16,12 +22,22 @@ import { createStreamingModule } from "./streaming/index.js";
  * This file is the one place that may wire them together.
  */
 export function createModules() {
-  const ragService = createRagService({ storeKind: config.rag.store });
+  const traces = createTraceLog();
+  const record = (entry) => traces.add(entry);
+  const ragService = createRagService({ storeKind: config.rag.store, trace: record });
 
   return [
     createFundamentalsModule(),
     createProvidersModule(),
     createRagModule({ service: ragService }),
+    createAdvancedRagModule({
+      k: config.rag.topK,
+      minScore: config.rag.minScore,
+      searchWide: (question, userId) => ragService.retrieve(question, userId, 20),
+      listChunks: (userId) => ragService.listChunks(userId),
+      loadSuite: async () => JSON.parse(await fs.readFile(QUESTIONS_PATH, "utf-8")),
+      score: (items) => scoreRetrieval(items, { k: config.rag.topK, minScore: config.rag.minScore }),
+    }),
     createSemanticSearchModule({
       minScore: config.rag.minScore,
       search: async (question, userId) => {
@@ -36,12 +52,14 @@ export function createModules() {
       retryDocument: (filename, userId) => ragService.retryDocument(filename, userId),
       removeDocument: (filename, userId) => ragService.removeDocument(filename, userId),
     }),
-    createStreamingModule(),
+    createStreamingModule({ service: createStreamingService({ trace: record }) }),
     createConversationsModule({
+      trace: record,
       retrieveContext: async (question, userId) => {
         const hits = await ragService.retrieve(question, userId);
         return applyCutoff(hits, config.rag.minScore).matched;
       },
     }),
+    createObservabilityModule({ log: traces }),
   ];
 }

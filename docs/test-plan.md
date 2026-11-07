@@ -152,7 +152,16 @@ Open **Document Pipeline**. Shared files say `ready` and `shared`.
 
 Switch **Who is asking** back to Local. Delete `pipeline-note.md` first if it is still listed.
 
-## 7. Streaming Chat
+## 7. Advanced RAG
+
+Open **Advanced RAG**. This page does not answer the question. It scores two retrievers.
+
+| Step | Expected result |
+| --- | --- |
+| Click **Compare retrieval** | Vector and Hybrid both show recall@3 of 100% before and after, MRR 1.00, and unanswerable refused 1/2. The line says hybrid did not beat vector search |
+| Open **RAG** and ask `What is the server room access code?` | The reply still comes from the vector search. The source is `knowledge.txt` |
+
+## 8. Streaming Chat
 
 Open **Streaming Chat**. This page has no documents.
 
@@ -162,7 +171,7 @@ Open **Streaming Chat**. This page has no documents.
 | Press **Stop** during that reply | The numbers already shown stay. A Stopped line appears. Nothing more arrives |
 | Refresh the page | The chat is gone. This page does not save threads |
 
-## 8. Conversations
+## 9. Conversations
 
 MongoDB must be up from step 1. Open **Conversations**.
 
@@ -185,9 +194,19 @@ Summary. In `backend/.env`, set `CONVERSATION_HISTORY_LIMIT=2`, restart the API,
 
 Put `CONVERSATION_HISTORY_LIMIT` back to 12 and restart when you are done.
 
-## 9. What you are not testing yet
+## 10. Observability
 
-These sidebar items say **soon** and have no page: Advanced RAG, LLM Evaluation, Hallucination Detection, AI Agents, Multi-Agent Systems, Security, Observability, Deployment, Multimodal AI, and Fine-Tuning.
+Open **RAG** and ask one question, then open **Observability** and click **Refresh**.
+
+| Step | Expected result |
+| --- | --- |
+| Ask `Where is the company gym?` on RAG, then refresh this page | A `rag.stream` card says `answered`. Retrieval and generation times are filled in. Kept names `knowledge.txt` |
+| Ask `What is the capital of Brazil?` on RAG, then refresh | A card says `search missed`. Kept is `none`. Generation is `—` |
+| Send one message on **Streaming Chat**, then refresh | A `streaming.chat` card. Retrieval is `—` |
+
+## 11. What you are not testing yet
+
+These sidebar items say **soon** and have no page: LLM Evaluation, Hallucination Detection, AI Agents, Multi-Agent Systems, Security, Deployment, Multimodal AI, and Fine-Tuning.
 
 A hosted provider, Multimodal AI, and Fine-Tuning also need something this lab does not have yet: a paid API key, a vision model, and a GPU notebook. The build steps and the tests for those three are in [later-modules.md](later-modules.md). Run them when the key, the model, or the notebook is available. Until then they stay **soon**.
 

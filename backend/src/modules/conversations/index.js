@@ -8,6 +8,7 @@ export function createConversationsModule({
   service,
   retrieveContext,
   connect = connectMongo,
+  trace,
 } = {}) {
   const box = { store: null };
 
@@ -16,6 +17,7 @@ export function createConversationsModule({
     createConversationService({
       getStore: () => box.store,
       retrieveContext,
+      trace,
     });
 
   return {

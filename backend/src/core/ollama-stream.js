@@ -16,6 +16,8 @@ export function tokenFromOllamaLine(line) {
   return {
     token: json.message?.content ?? "",
     done: Boolean(json.done),
+    promptTokens: countOrNull(json.prompt_eval_count),
+    completionTokens: countOrNull(json.eval_count),
   };
 }
 
@@ -100,6 +102,8 @@ export async function streamOllamaChat({
   const reader = response.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
+  let promptTokens = null;
+  let completionTokens = null;
 
   while (true) {
     if (signal?.aborted) {
@@ -115,7 +119,11 @@ export async function streamOllamaChat({
     for (const line of split.lines) {
       const parsed = tokenFromOllamaLine(line);
       if (parsed.token) await onToken(parsed.token);
-      if (parsed.done) return;
+      if (parsed.promptTokens != null) promptTokens = parsed.promptTokens;
+      if (parsed.completionTokens != null) completionTokens = parsed.completionTokens;
+      if (parsed.done) return { promptTokens, completionTokens };
     }
   }
+
+  return { promptTokens, completionTokens };
 }

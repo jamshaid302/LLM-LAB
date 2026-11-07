@@ -247,28 +247,31 @@ memory, so a restart clears it. Other pages do not all write this log yet.
 
 ---
 
-## Planned — advanced RAG
+## Built — advanced RAG
 
 ### What is hybrid search?
 
-Vector search finds similar meaning and misses exact words like error codes and names.
-Keyword search (BM25) does the opposite. Hybrid search runs both and merges the lists.
-You keep it only if it raises recall on your question set. If it does not, you write
-that down and leave it out.
+In this project a comparison runs BM25 and the vector search, then merges the lists
+with reciprocal rank fusion. On 29 October 2026, with `nomic-embed-text` and the
+current docs, both retrievers had recall@3 of 1 and MRR of 1. The right chunk was
+already rank 1 for every answerable question, including the server-room code and
+`lantern-42`. Brazil stayed under the 0.5 cutoff. "Who is the CEO?" stayed above it.
+Hybrid was not adopted. RAG and Semantic Search still use vector search.
 
 ### What is reranking?
 
-A first search returns more candidates than you will show, say 20. A second, slower
-model scores those 20 against the question and you keep the best 3. You pay latency for
-better order. Measure it. Reranking a bad first search cannot find a chunk that never
-came back.
+The way I would build it is a second, slower model that rescores a wider first list,
+about 20 chunks, and keeps the best 3. I would pay latency for a better order, and I
+would keep it only if recall or MRR on the question file went up. Reranking a bad
+first search cannot find a chunk that never came back. That rescoring model is not
+built.
 
 ### What is query rewriting?
 
-The user's question is often a bad search string. "What about the refund?" means nothing
-without the previous turn. A rewrite step turns it into a standalone search query, then
-you embed that. It helps follow-ups and hurts when the rewrite drifts off the user's
-words, so you keep the original query in the hybrid search too.
+In this project a follow-up on the Conversations page is rewritten into a standalone
+search query before Chroma is called. The reply still sees the sentence the user
+typed. A rewrite helps follow-ups and can drift off the user's words, so the vector
+search is what the measurement above scored, not the rewrite.
 
 ---
 
@@ -445,15 +448,17 @@ secrets from tool output before it goes back to the model. That is not built.
 
 ---
 
-## Planned — observability
+## Built — observability
 
 ### What do you log for one AI request?
 
-A request id, the user, the model, prompt tokens, completion tokens, retrieval scores,
-latency of the search, latency of the generation, and whether the answer was a refusal.
-You do not need a new kind of monitoring. You need those fields on the span you already
-have. When an answer is wrong you can see whether search failed or the model ignored
-good chunks.
+In this project each RAG ask, RAG stream, Streaming Chat message, and Conversations
+reply writes one trace: the route, the person, retrieval time, generation time, prompt
+tokens, completion tokens, and the file name and score of each kept or dropped chunk.
+The question is not stored. The list is the newest 50 traces, in memory. A card that
+says the search missed had no kept chunk and did not call the model. A card with kept
+chunks and a replaced answer means the model wrote something the grounding check would
+not keep. A restart clears the list. A durable log is not built.
 
 ---
 
