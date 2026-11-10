@@ -15,6 +15,7 @@ import { createHallucinationModule } from "./hallucination/index.js";
 import { createObservabilityModule, loadTraces } from "./observability/index.js";
 import { createTraceLog } from "./observability/trace-log.js";
 import { createProvidersModule } from "./providers/index.js";
+import { lessonReply, searchAsWritten } from "./rag/lesson.js";
 import { applyCutoff, scoreRetrieval } from "./rag/retrieval.js";
 import { QUESTIONS_PATH, createRagService } from "./rag/rag-service.js";
 import { readBaseline } from "./rag/eval/report.js";
@@ -99,6 +100,8 @@ export function createModules() {
         const hits = await ragService.retrieveRanked(question, userId);
         return applyCutoff(hits, config.rag.minScore).matched;
       },
+      lessonReply,
+      searchAsWritten,
     }),
     createObservabilityModule({
       log: traces,

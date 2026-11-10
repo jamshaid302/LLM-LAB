@@ -14,7 +14,8 @@ export default function LearnPage() {
   return (
     <div style={styles.page}>
       <p style={styles.note}>
-        Work top to bottom. Each concept says what it is, then where to try it. {counts.built ?? 0} are built and
+        Work top to bottom, or open Conversations and ask what a concept means. Each concept says what it
+        is, then where to try it. {counts.built ?? 0} are built and
         tested, {counts.measured ?? 0} are built and measured but not used for answers, {counts.planned ?? 0} are
         explained but not built yet, and {counts["left out"] ?? 0} are left out on purpose.
       </p>

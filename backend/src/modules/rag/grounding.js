@@ -34,7 +34,9 @@ const ORDINARY = new Set([
  * A fact that is written in the file still counts as supported.
  */
 export function groundAnswer(answer, chunks) {
-  const text = String(answer ?? "").trim();
+  // A small model often copies the documents and then writes "Answer: ...".
+  // The line after that label is the claim. The copy before it is not.
+  const text = statedAnswer(String(answer ?? "").trim());
   if (!text || text === NO_ANSWER) {
     return { grounded: text === NO_ANSWER, answer: NO_ANSWER };
   }
@@ -62,4 +64,11 @@ export function groundAnswer(answer, chunks) {
   }
 
   return { grounded: true, answer: text };
+}
+
+/** Keep the text after a final "Answer:" label. Without one, the whole reply stands. */
+function statedAnswer(text) {
+  const match = text.match(/(?:^|\n)[ \t]*Answer:[ \t]*([\s\S]+)$/);
+  const tail = match?.[1]?.trim();
+  return tail || text;
 }

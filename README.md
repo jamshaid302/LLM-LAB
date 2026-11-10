@@ -113,7 +113,7 @@ summarizes them.
 | Semantic Search         | **ready** | Search the knowledge base and get the chunks and scores back, with no chat model                                   | [README](backend/src/modules/semantic-search/README.md) |
 | Document Pipeline       | **ready** | Upload a file, watch the embed job, and retry or remove it                                                         | [README](backend/src/modules/documents/README.md)       |
 | Streaming Chat          | **ready** | Token-by-token answers over Server-Sent Events, with cancellation                                                  | [README](backend/src/modules/streaming/README.md)       |
-| Conversations           | **ready** | Threads and messages in MongoDB, replayed into the next prompt alongside Chroma                                    | [README](backend/src/modules/conversations/README.md)   |
+| Conversations           | **ready** | A saved tutor chat. It explains RAG, LLMs, and the lab from the learning guide, and remembers the thread           | [README](backend/src/modules/conversations/README.md)   |
 | LLM Evaluation          | **ready** | Recall and MRR on 57 questions, plus a saved answer-quality run graded by labels and an LLM judge                  | [README](backend/src/modules/evaluation/README.md)      |
 | Hallucination Detection | **ready** | Mark an answer when the kept chunks do not support it                                                              | [README](backend/src/modules/hallucination/README.md)   |
 | AI Agents               | **ready** | One tool, a step cap, and whether the arguments were valid                                                         | [README](backend/src/modules/agents/README.md)          |
@@ -397,9 +397,10 @@ model in `baseline.json` and shown on the Evaluation page. `npm test` checks the
 numbers against floors in `eval/gate.js`: recall 0.95, MRR 0.85, and for qwen2.5:7b a
 label-correct rate of 0.9 with at least 7 of 8 unanswerable questions refused. The first
 run found a grounding bug: `[1]` was read as the number 1, so correct cited answers were
-refused. That is fixed and tested. The full run after the fix: 49 of 49 correct by label,
-48 of 49 by the judge, no false refusals, and 8 of 8 unanswerable questions refused (2 by
-the cutoff, 6 by the model or grounding check).
+refused. That is fixed and tested. The committed run: 49 of 49 correct by label and by
+the judge, no false refusals, and 8 of 8 unanswerable questions refused (2 by the cutoff,
+6 by the model or grounding check). One judge "no" on the first pass came from a one-word
+label; that label is now the full phrase, and grading the same saved answer again said yes.
 
 ### Milestone 10 — Agents and tool calling · in progress
 

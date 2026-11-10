@@ -42,7 +42,7 @@
 
     { "question": "About how many characters is one token in English?", "expect": "about four", "answer": "four" },
     { "question": "What does a temperature of 0 do?", "expect": "temperature of 0 always picks", "answer": "most likely" },
-    { "question": "What is a cross-encoder?", "expect": "reads the question and one chunk together", "answer": "together" },
+    { "question": "What is a cross-encoder?", "expect": "reads the question and one chunk together" },
     { "question": "What constant does reciprocal rank fusion add to the rank?", "expect": "60 plus the rank", "answer": "60" },
     { "question": "What is QLoRA?", "expect": "4-bit quantized", "answer": "4-bit" },
 

@@ -10,6 +10,10 @@ prompt so the model can continue from what was already said.
 
 Retrieval still runs. If the new question matches a knowledge-base chunk, that chunk is
 added to the same prompt. The transcript and the documents stay in different databases.
+`docs/learning-guide.md` answers what RAG is, how it works, how to learn it, what an LLM
+is, and which ideas sit behind generative AI. When the retrieved chunk is that lesson,
+the reply is the lesson itself, including the lab page to open. Other questions still
+go to the model, which is told not to add a step the documents do not state.
 
 **What you learn here:** why a chat transcript is not a vector search, how to put the
 saved turns back into the next model call, and where a context window forces you to

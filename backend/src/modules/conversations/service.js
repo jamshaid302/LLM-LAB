@@ -31,6 +31,8 @@ export function createConversationService({
       messages,
     }),
   retrieveContext = async () => [],
+  lessonReply = () => null,
+  searchAsWritten = () => false,
   userId = config.conversations.userId,
   historyLimit = config.conversations.historyLimit,
   trace,
@@ -74,14 +76,17 @@ export function createConversationService({
 
     await db.addMessage({ threadId, role: "user", content: text });
     const history = await prepareHistory({ db, thread, threadId });
-    const searchQuery = await rewriteSearchQuery({
-      summary: history.summary,
-      messages: history.recent,
-      question: text,
-    });
+    const searchQuery = searchAsWritten(text)
+      ? text
+      : await rewriteSearchQuery({
+          summary: history.summary,
+          messages: history.recent,
+          question: text,
+        });
     const retrievalStarted = Date.now();
     const docs = await retrieveContext(searchQuery, actor);
     const retrievalMs = Date.now() - retrievalStarted;
+    const lesson = lessonReply(text, docs) ?? lessonReply(searchQuery, docs);
     const prompt = buildConversationMessages({
       history: history.recent,
       docs,
@@ -107,15 +112,20 @@ export function createConversationService({
     let error = null;
     const generationStarted = Date.now();
     try {
-      counts =
-        (await streamChat({
-          messages: prompt,
-          signal,
-          onToken(token) {
-            answer += token;
-            write(formatSse("token", { text: token }));
-          },
-        })) ?? {};
+      if (lesson) {
+        answer = redactOutput(lesson);
+        write(formatSse("token", { text: answer }));
+      } else {
+        counts =
+          (await streamChat({
+            messages: prompt,
+            signal,
+            onToken(token) {
+              answer += token;
+              write(formatSse("token", { text: token }));
+            },
+          })) ?? {};
+      }
     } catch (err) {
       if (!isAbortError(err) && !signal?.aborted) {
         error = err.message;

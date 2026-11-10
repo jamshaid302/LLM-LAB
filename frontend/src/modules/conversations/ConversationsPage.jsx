@@ -121,8 +121,8 @@ export default function ConversationsPage() {
   return (
     <div style={styles.page}>
       <p style={styles.note}>
-        Threads are saved in MongoDB. Refresh the page and this chat is still here. Matching
-        knowledge-base chunks still come from Chroma.
+        Ask what RAG is, how an LLM works, or how to learn the next idea. The reply comes from the
+        lab guide and remembers this thread. Refresh the page and the chat is still here.
       </p>
       <div style={styles.threads}>
         <button type="button" onClick={newThread} style={styles.threadBtn}>

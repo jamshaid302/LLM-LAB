@@ -18,6 +18,7 @@ import { createEmbedQueue } from "./embed-queue.js";
 import { extractPdfText } from "./pdf-text.js";
 import { NO_ANSWER, buildRagMessages } from "./prompt.js";
 import { groundAnswer } from "./grounding.js";
+import { lessonReply } from "./lesson.js";
 import { applyCutoff, scoreRetrieval } from "./retrieval.js";
 import { createVectorStore } from "./store.js";
 
@@ -334,6 +335,19 @@ export function createRagService({
       };
     }
 
+    const lesson = lessonReply(question, matched);
+    if (lesson) {
+      return {
+        refused: false,
+        lesson: true,
+        answer: lesson,
+        matchedSources,
+        droppedSources,
+        ranking,
+        messages: null,
+      };
+    }
+
     const docs = matched.map((hit) => ({
       pageContent: hit.text,
       metadata: { source: hit.source },
@@ -357,6 +371,22 @@ export function createRagService({
     const retrievalMs = Date.now() - retrievalStarted;
     const { messages, ranking, ...answerFields } = prepared;
     const result = { ...answerFields, reranked: ranking.reranked };
+    if (prepared.lesson) {
+      const answer = redactOutput(prepared.answer);
+      recordTrace(trace, {
+        route: "rag.ask",
+        userId,
+        retrievalMs,
+        generationMs: null,
+        refused: false,
+        sources: result.matchedSources,
+        dropped: result.droppedSources,
+        ...ranking,
+      });
+      const response = { ...result, answer, refused: false, cached: false };
+      if (!externalJobs) answerCache.set(userId, question, response);
+      return response;
+    }
     if (prepared.refused) {
       recordTrace(trace, {
         route: "rag.ask",
@@ -424,6 +454,23 @@ export function createRagService({
         reranked: prepared.ranking.reranked,
       }),
     );
+
+    if (prepared.lesson) {
+      const answer = redactOutput(prepared.answer);
+      write(formatSse("token", { text: answer }));
+      write(formatSse("done", { finish: "stop" }));
+      recordTrace(trace, {
+        route: "rag.stream",
+        userId,
+        retrievalMs,
+        generationMs: null,
+        refused: false,
+        sources: prepared.matchedSources,
+        dropped: prepared.droppedSources,
+        ...prepared.ranking,
+      });
+      return;
+    }
 
     if (prepared.refused) {
       write(formatSse("token", { text: prepared.answer }));

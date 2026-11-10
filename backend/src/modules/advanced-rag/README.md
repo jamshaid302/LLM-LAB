@@ -63,8 +63,9 @@ search, the chunk list, the question file, the scorer, and the cross-encoder.
 
 A **Compare retrieval** button. Five cards, each with recall and MRR before and after the
 cutoff, unanswerable refusals, and whether that pass was kept. Each card lists the
-questions it missed. The line above the cards says what RAG answers with. The score uses
-the signed-in account's files plus the shared samples.
+questions it missed. The line above the button says what RAG answers with. It comes from
+the API health check, so it is there before the comparison runs. The score uses the
+signed-in account's files plus the shared samples.
 
 ## What the measurement said
 
@@ -72,7 +73,9 @@ Measured 29 October 2026 with `nomic-embed-text`, k of 3, cutoff 0.5, 20 candida
 shared files (101 chunks), 49 answerable and 8 unanswerable questions. 8 answerable ones
 need two facts; 7 of those have the facts in different chunks. The same numbers are
 saved under `rerank` in `eval/baseline.json` by `npm run eval:rerank -- --write`, and
-the run was repeated with identical results.
+the run was repeated with identical results. The retrieval baseline was measured again
+on 30 October 2026 after `learning-guide.md` was added: 10 files, 108 chunks, and the
+cross-encoder recall and MRR did not drop. The comparison table was not re-run.
 
 | Pass | Recall@3 after cutoff | MRR after cutoff | Unanswerable refused | Kept |
 | --- | --- | --- | --- | --- |

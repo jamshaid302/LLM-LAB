@@ -37,4 +37,21 @@ describe("groundAnswer", () => {
   it("still rejects a number outside the citation that the chunk lacks", () => {
     expect(groundAnswer("The gym is on the 5th floor [1].", gym).grounded).toBe(false);
   });
+
+  it("keeps the sentence after an Answer label and ignores the copied documents before it", () => {
+    const copied = [
+      '<document source="knowledge.txt" id="1">',
+      "The gym is on the 3rd floor.",
+      "</document>",
+      "Answer: The gym is on the 3rd floor.",
+    ].join("\n");
+    expect(groundAnswer(copied, gym)).toEqual({
+      grounded: true,
+      answer: "The gym is on the 3rd floor.",
+    });
+  });
+
+  it("still rejects a name that appears only after the Answer label", () => {
+    expect(groundAnswer("Answer: The CEO is Bob.", gym).grounded).toBe(false);
+  });
 });

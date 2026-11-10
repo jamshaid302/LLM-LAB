@@ -93,23 +93,24 @@ Retrieval on the 49 answerable questions: recall@3 1.0 and MRR 0.915 after the c
 The cutoff alone refused 2 of the 8 unanswerable questions (Brazil and the 2018 World
 Cup).
 
-Answers from `qwen2.5:7b`, judged by `qwen2.5:7b` at temperature 0, all 57 questions in
-22 minutes (23 seconds per question on average):
+Answers from `qwen2.5:7b`, judged by `qwen2.5:7b` at temperature 0. All 57 questions were
+asked on 29 October 2026 (22 minutes, 23 seconds per question on average). One label was
+corrected the next day and that saved answer was graded again; the other 56 answers were
+not re-asked.
 
 | Measure | Result |
 | --- | --- |
 | Correct by human label | 49 of 49 (1.0) |
-| Correct by LLM judge | 48 of 49 (0.98) |
-| Judge agrees with label | 0.98 |
+| Correct by LLM judge | 49 of 49 (1.0) |
+| Judge agrees with label | 1.0 |
 | Answerable questions wrongly refused | 0 |
 | Unanswerable questions refused | 8 of 8: 2 by the cutoff, 6 by the model or grounding check |
 
-The one disagreement teaches more than the 48 agreements. For "What is a cross-encoder?"
-the answer was right: "reads the question and one chunk together and outputs a relevance
-score". The label was the single word `together`. The judge was shown "Fact: together",
-could not tell what fact that was, and said no. A label must be a fact a reader can check,
-not a keyword. The retrieval phrase can stay short, but the answer label for that kind
-of question should be a full statement.
+The first save of this run was 48 of 49 by the judge. The miss was "What is a
+cross-encoder?". The answer was right ("reads the question and one chunk together"), but
+the label was the single word `together`. Shown "Fact: together", the judge said no. The
+label is now the full phrase the glossary uses, and the same saved answer was graded
+again: the judge said yes. A label has to be a fact a reader can check, not a keyword.
 
 The cutoff stops only 2 of the unanswerable questions, so the 6 that reach the model are
 where the prompt and the grounding check earn their place. All 6 were refused. An earlier

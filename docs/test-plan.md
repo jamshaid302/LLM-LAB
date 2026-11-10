@@ -233,7 +233,7 @@ Open **LLM Evaluation**. This page does not write an answer.
 | Step | Expected result |
 | --- | --- |
 | Click **Score question set** | Recall@3 is 100% before and after. MRR after is about 0.92. Unanswerable refused is 2/8. The Brazil row says refused. The CEO row says not refused. Two-fact rows say "needs two chunks" |
-| Read **Saved baseline** | 49 answerable questions (8 need two chunks) and 8 unanswerable, over 101 chunks from 9 files. The rerank comparison. An answer run for qwen2.5:7b with label and judge scores |
+| Read **Saved baseline** | 49 answerable questions (8 need two chunks) and 8 unanswerable, over 108 chunks from 10 files. The rerank comparison. An answer run for qwen2.5:7b with label and judge scores |
 
 ## 12. Hallucination Detection
 
@@ -282,7 +282,7 @@ These need Docker (for the live tests) or Ollama (for the eval scripts). Run the
 | `npm run eval:retrieval` | Recall@3 1.0, MRR 0.915, refused by cutoff 2. "No drop compared with eval/baseline.json". About 2 minutes |
 | `npm run eval:rerank` | The five-pass table from Advanced RAG. About 2 minutes |
 | `npm run eval:answers -- --model qwen2.5:7b --limit 5` | Five answerable lines that start `ok judge=yes`, then five unanswerable lines. Nothing is saved |
-| `npm run eval:answers -- --model qwen2.5:7b --write` | All 57 questions, about 22 minutes. On 29 October 2026: 49/49 by label, 48/49 by judge, 8/8 unanswerable refused. The result is saved under `answers["qwen2.5:7b"]` and shows on the Evaluation page. `npm test` then checks it against the floors |
+| `npm run eval:answers -- --model qwen2.5:7b --write` | All 57 questions, about 22 minutes. On 29 October 2026, with one label corrected and regraded the next day: 49/49 by label, 49/49 by judge, 8/8 unanswerable refused. The result is saved under `answers["qwen2.5:7b"]` and shows on the Evaluation page. `npm test` then checks it against the floors |
 | Set `RAG_RERANK=off` in the shell and run `npm run eval:retrieval` | Recall falls to about 0.96 and the command exits 1 with "Retrieval dropped". That is the regression check working |
 
 ## 17. What you are not testing yet

@@ -295,15 +295,26 @@ Threads and messages are stored in MongoDB. The next call gets a summary of the 
 plus the recent ones, and retrieved chunks when the question needs documents.
 Code: `backend/src/modules/conversations/`. Test: `tests/modules/conversations/conversations.test.js`.
 
+### Learning assistant (built)
+
+In this project I put a short lesson for each starter question in
+`backend/src/modules/rag/docs/learning-guide.md`. When that lesson is the retrieved match,
+Conversations and the RAG page reply with the lesson itself, including the lab page to
+open next. A small model was rewriting those lessons into steps the guide does not state.
+Other questions still go through the model. The cutoff, the document fence, and the
+grounding check stay on, so a question the guide does not cover is still refused.
+
 ---
 
 ## 5. Measuring quality
 
 ### Golden question set (built)
 
-`backend/src/modules/rag/eval/questions.json` has 57 questions over 9 files: 49 with a
+`backend/src/modules/rag/eval/questions.json` has 57 questions: 49 with a
 known answer (8 of them need two different chunks) and 8 that the documents cannot answer.
-Every retrieval or prompt change is scored against the same set.
+Every retrieval or prompt change is scored against the same set. The saved retrieval
+baseline, measured 30 October 2026, is 10 files and 108 chunks, including the learning
+guide. Recall@3 stayed 1.0 and MRR stayed 0.915.
 
 ### Recall@k and MRR (built)
 
@@ -322,10 +333,11 @@ as far as it agrees with the labels, so the agreement rate is recorded. An unans
 question passes only if the system refuses. The record shows whether the cutoff or the
 model and grounding check made the refusal.
 
-Measured with qwen2.5:7b: 49 of 49 correct by label, 48 of 49 by the judge, no correct
+Measured with qwen2.5:7b: 49 of 49 correct by the human label and by the judge, no correct
 answer refused, and 8 of 8 unanswerable questions refused (2 by the cutoff, 6 by the
-model and grounding check). The single judge "no" was a correct answer whose label was
-one vague word, a reminder that the judge is only as good as the label it is given.
+model and grounding check). The first judge pass said no once, on a correct answer whose
+label was the single word "together". That label is now the full phrase, and the same
+saved answer was graded again as yes.
 Code: `backend/src/modules/rag/eval/report.js`, `backend/src/modules/hallucination/service.js`.
 Test: `tests/modules/rag/eval-report.test.js`, `tests/modules/hallucination/judge.test.js`.
 

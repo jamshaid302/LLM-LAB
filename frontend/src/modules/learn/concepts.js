@@ -241,6 +241,13 @@ export const stages = [
         what: "A database keeps who said what, in order. The next call sends recent turns plus a summary of older ones.",
         tryIt: "Reload the page; the thread is still there.",
       },
+      {
+        name: "Learning assistant",
+        status: "built",
+        page: "conversations",
+        what: "The chat explains RAG, LLMs, and the rest of the lab from a short guide, then names the page to open next.",
+        tryIt: "Ask what RAG is, how it works, or how to learn it.",
+      },
     ],
   },
   {
@@ -265,7 +272,7 @@ export const stages = [
         name: "Answer quality and LLM-as-judge",
         status: "built",
         page: "evaluation",
-        what: "Each answer is graded by the human label and by a second model call. The judge is trusted only as far as it agrees with the labels. With qwen2.5:7b: 49/49 by label, 48/49 by judge, 8/8 unanswerable refused.",
+        what: "Each answer is graded by the human label and by a second model call. The judge is trusted only as far as it agrees with the labels. With qwen2.5:7b: 49/49 by label and by judge, 8/8 unanswerable refused.",
         tryIt: "Read Saved baseline, or run Judge on Hallucination Detection.",
       },
       {

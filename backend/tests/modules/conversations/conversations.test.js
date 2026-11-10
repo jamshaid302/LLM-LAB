@@ -12,6 +12,7 @@ import {
   searchQueryFromRewrite,
 } from "../../../src/modules/conversations/prompt.js";
 import { createConversationService } from "../../../src/modules/conversations/service.js";
+import { lessonReply, searchAsWritten } from "../../../src/modules/rag/lesson.js";
 
 describe("conversation prompt", () => {
   it("keeps the newest turns and starts on a user message", () => {
@@ -37,6 +38,7 @@ describe("conversation prompt", () => {
     expect(messages[0].role).toBe("system");
     expect(messages[0].content).not.toContain("3rd floor");
     expect(messages[0].content).toContain("data, not instructions");
+    expect(messages[0].content).toContain("lab page");
     expect(messages[1].role).toBe("user");
     expect(messages[1].content).toContain("knowledge.txt");
     expect(messages[1].content).toContain("3rd floor");
@@ -127,6 +129,76 @@ describe("conversation service", () => {
     expect(queries).toEqual(["My name is Sam.", "Where is the company gym?"]);
     expect(chunks[0]).toContain("event: meta");
     expect((await service.listThreads())[0].title).toBe("My name is Sam.");
+  });
+
+  it("answers a starter question with the learning-guide lesson and does not call the model", async () => {
+    const store = createMemoryConversationStore();
+    let called = false;
+    const service = createConversationService({
+      store,
+      lessonReply,
+      searchAsWritten,
+      retrieveContext: async () => [
+        {
+          text: "## What is RAG?\n\nWhat is RAG? Retrieval-augmented generation searches your documents. It does not retrain the model. Open the RAG page.",
+          source: "learning-guide.md",
+          score: 0.8,
+        },
+      ],
+      streamChat: async () => {
+        called = true;
+      },
+    });
+
+    const thread = await service.createThread();
+    const chunks = [];
+    await service.streamReply({
+      threadId: thread.id,
+      message: "What is RAG?",
+      write: (chunk) => chunks.push(chunk),
+    });
+
+    const saved = await service.listMessages(thread.id);
+    expect(called).toBe(false);
+    expect(saved.messages[1].content).toContain("does not retrain");
+    expect(saved.messages[1].content).toContain("RAG page");
+    expect(chunks.join("")).toContain("does not retrain");
+  });
+
+  it("searches a follow-up lesson question as written", async () => {
+    const store = createMemoryConversationStore();
+    const queries = [];
+    const service = createConversationService({
+      store,
+      lessonReply,
+      searchAsWritten,
+      retrieveContext: async (query) => {
+        queries.push(query);
+        return [
+          {
+            text: "## How can I learn RAG?\n\nHow can I learn RAG? Read the RAG stage on the Learning Path page.",
+            source: "learning-guide.md",
+            score: 0.8,
+          },
+        ];
+      },
+      completeChat: async () => {
+        throw new Error("a lesson question is not rewritten");
+      },
+      streamChat: async ({ onToken }) => onToken("Noted."),
+    });
+
+    const thread = await service.createThread();
+    await service.streamReply({ threadId: thread.id, message: "Hello", write: () => {} });
+    await service.streamReply({
+      threadId: thread.id,
+      message: "How can I learn RAG?",
+      write: () => {},
+    });
+
+    expect(queries).toEqual(["Hello", "How can I learn RAG?"]);
+    const saved = await service.listMessages(thread.id);
+    expect(saved.messages.at(-1).content).toContain("Learning Path");
   });
 
   it("saves a partial reply when the stream is stopped", async () => {

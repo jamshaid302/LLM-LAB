@@ -101,9 +101,11 @@ function SavedBaseline({ baseline }) {
       </p>
       {rerank && (
         <p style={styles.note}>
-          Rerank comparison: vector {percent(rerank.vector?.recallAfter)} / MRR {rerank.vector?.mrrAfter}, cross-encoder{" "}
-          {percent(rerank.crossEncoder?.recallAfter)} / MRR {rerank.crossEncoder?.mrrAfter}, overlap{" "}
-          {percent(rerank.overlap?.recallAfter)} / MRR {rerank.overlap?.mrrAfter}.
+          Rerank comparison: vector {percent(rerank.vector?.recallAfter)} / MRR {rerank.vector?.mrrAfter}, hybrid{" "}
+          {percent(rerank.hybrid?.recallAfter)} / MRR {rerank.hybrid?.mrrAfter}, overlap{" "}
+          {percent(rerank.overlap?.recallAfter)} / MRR {rerank.overlap?.mrrAfter}, cross-encoder{" "}
+          {percent(rerank.crossEncoder?.recallAfter)} / MRR {rerank.crossEncoder?.mrrAfter}, parent{" "}
+          {percent(rerank.parent?.recallAfter)} / MRR {rerank.parent?.mrrAfter}.
         </p>
       )}
       {answers.map((entry) => (

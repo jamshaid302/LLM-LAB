@@ -107,8 +107,8 @@ is still in the code and tests still use it. `RAG_STORE=memory` switches back to
 Chroma stores cosine distance, so the app converts that to similarity before the 0.5
 cutoff. After the swap, recall@3 was still 1.0 and the gym chunk still scored 0.774.
 Restarting the API, and restarting the Chroma container, both load the chunks without
-embedding them again when the folder hash matches. The shared folder is now 9 files and
-101 chunks. The owner filter was also tested against a real Chroma, not only a fake:
+embedding them again when the folder hash matches. The shared folder is now 10 files and
+108 chunks. The owner filter was also tested against a real Chroma, not only a fake:
 another person's nearest chunk never takes a top-k slot. Each chunk is labeled with the file it came from, so the
 wifi password cites `office.txt` and the gym cites `knowledge.txt`. An exact repeat of a question for the same person is answered from a ten-minute cache and that cache is cleared when a document changes. Emails, phone numbers, card numbers, and API keys in the reply are labeled. `lantern-42` and `4829` stay.
 
@@ -396,10 +396,11 @@ are committed in `baseline.json`, and a unit test fails if they fall under floor
 unanswerable questions refused. Anyone who changes retrieval or prompts has to rerun the
 scripts and commit numbers that still pass.
 
-The saved qwen2.5:7b run: 49 of 49 correct by label, 48 of 49 by the judge, no false
-refusals, and all 8 unanswerable questions refused, 6 of them after the cutoff let them
-through. The one judge "no" was a correct answer with a one-word label ("together"). The
-judge could not check a fact that vague, which is a lesson about writing labels.
+The saved qwen2.5:7b run: 49 of 49 correct by label and by the judge, no false refusals,
+and all 8 unanswerable questions refused, 6 of them after the cutoff let them through.
+The first judge pass said no once. The answer was right and the label was the single word
+"together", which is not a fact anyone can check. The label is now the full phrase, and
+grading that same saved answer again came back yes.
 
 **What the first full answer run caught.** Two correct answers were being refused. The
 grounding check read the citation `[1]` as the number 1, and when the chunk had no "1" in

@@ -7,6 +7,8 @@ import { createConversationService } from "./service.js";
 export function createConversationsModule({
   service,
   retrieveContext,
+  lessonReply,
+  searchAsWritten,
   connect = connectMongo,
   trace,
 } = {}) {
@@ -17,6 +19,8 @@ export function createConversationsModule({
     createConversationService({
       getStore: () => box.store,
       retrieveContext,
+      lessonReply,
+      searchAsWritten,
       trace,
     });
 

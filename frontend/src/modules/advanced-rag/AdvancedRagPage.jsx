@@ -1,11 +1,25 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import { userHeaders } from "../../lib/user.js";
 
 export default function AdvancedRagPage() {
   const [report, setReport] = useState(null);
+  const [retriever, setRetriever] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/health")
+      .then((res) => res.json())
+      .then((data) => {
+        if (!cancelled) setRetriever(data.modules?.["advanced-rag"]?.retriever ?? "");
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   async function compare() {
     setLoading(true);
@@ -32,13 +46,15 @@ export default function AdvancedRagPage() {
         when it raises recall, MRR, or the number of unanswerable questions the cutoff refuses, and lowers none of them.
       </p>
       <p style={styles.note}>The first compare can take a minute: it embeds every question and loads the cross-encoder.</p>
+      {(report?.retriever || retriever) && (
+        <p style={styles.decision}>RAG answers with: {report?.retriever || retriever}.</p>
+      )}
       <button type="button" onClick={compare} disabled={loading} style={styles.button}>
         {loading ? "Comparing..." : "Compare retrieval"}
       </button>
       {error && <p style={styles.error}>{error}</p>}
       {report && (
         <div>
-          <p style={styles.decision}>RAG answers with: {report.retriever}.</p>
           {report.crossEncoderError && <p style={styles.note}>Cross-encoder not scored: {report.crossEncoderError}</p>}
           <div style={styles.columns}>
             <Report title="Vector" report={report.vector} />

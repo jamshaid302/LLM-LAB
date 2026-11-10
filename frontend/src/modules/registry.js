@@ -45,7 +45,7 @@ export const modules = [
     name: "Advanced RAG",
     group: "Retrieval",
     status: "ready",
-    description: "Keyword plus vector search, measured against the current retriever.",
+    description: "Five retrievers scored on the same questions. RAG uses the one that wins.",
     Page: lazy(() => import("./advanced-rag/AdvancedRagPage.jsx")),
   },
   {
