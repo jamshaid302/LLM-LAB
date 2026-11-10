@@ -87,9 +87,9 @@ summarizes them.
 | Document Pipeline       | **ready** | Upload a file, watch the embed job, and retry or remove it                                       | [README](backend/src/modules/documents/README.md)       |
 | Streaming Chat          | **ready** | Token-by-token answers over Server-Sent Events, with cancellation                                | [README](backend/src/modules/streaming/README.md)       |
 | Conversations           | **ready** | Threads and messages in MongoDB, replayed into the next prompt alongside Chroma                  | [README](backend/src/modules/conversations/README.md)   |
-| LLM Evaluation          | planned   | Golden datasets, retrieval metrics, and LLM-as-judge scoring                                     | —                                                       |
-| Hallucination Detection | planned   | Checking that answers and citations are supported by the sources                                 | —                                                       |
-| AI Agents               | planned   | Tool calling, a bounded reasoning loop, and agent evaluation                                     | —                                                       |
+| LLM Evaluation          | **ready** | Score the question set for recall and MRR, without calling the chat model                        | [README](backend/src/modules/evaluation/README.md)      |
+| Hallucination Detection | **ready** | Mark an answer when the kept chunks do not support it                                            | [README](backend/src/modules/hallucination/README.md)   |
+| AI Agents               | **ready** | One tool, a step cap, and whether the arguments were valid                                       | [README](backend/src/modules/agents/README.md)          |
 | Multi-Agent Systems     | planned   | Agents handing work to each other, and when that is overhead                                     | —                                                       |
 | Security                | planned   | Prompt injection, PII, output sanitization, per-user data isolation                              | —                                                       |
 | Observability           | **ready** | One trace per RAG or chat request, with retrieval time, generation time, tokens, and kept chunks | [README](backend/src/modules/observability/README.md)   |
@@ -329,17 +329,26 @@ Still to come:
 - Reranking, and parent-document retrieval. Same rule: keep a change only when the
   measured numbers rise.
 
-### Milestone 9 — Evaluation and hallucination detection · planned
+### Milestone 9 — Evaluation and hallucination detection · in progress
 
-Shared evaluation tooling in `core/`: faithfulness scoring, citation verification that
-checks whether a cited chunk actually supports the claim, and an LLM judge calibrated
-against human labels. Regression gates in CI so quality cannot silently degrade.
+Done: the question set is scored for recall@k and MRR on its own page, without a chat
+model. A second page asks one question through RAG and labels the result: the search
+missed, the answer was replaced, or the answer is grounded. The replacement is the
+word check already used on the RAG page.
 
-### Milestone 10 — Agents and tool calling · planned
+Still to come:
 
-Tool calling from first principles before reaching for a framework, a bounded reasoning
-loop with step limits, and agent evaluation: task completion, step efficiency, tool-call
-accuracy. Multi-agent handoff last, with an honest look at when it is just overhead.
+- An LLM judge checked against human labels, and a CI gate that blocks a recall drop.
+
+### Milestone 10 — Agents and tool calling · in progress
+
+Done: one tool, `search_documents`, in a loop capped at 4 steps and 3 minutes. The page
+shows whether the run finished, the step count, and whether the arguments were valid.
+Tests use a fake model. The live model is `qwen2.5:7b`.
+
+Still to come:
+
+- Multi-agent handoff, and when that is overhead.
 
 ### Milestone 11 — Observability and deployment · in progress
 

@@ -407,11 +407,11 @@ export function createRagService({
     }
   }
 
-  async function evaluate() {
+  async function evaluate(userId = DEFAULT_USER) {
     const suite = JSON.parse(await fs.readFile(questionsPath, "utf-8"));
     const items = [];
     for (const item of [...suite.answerable, ...suite.unanswerable]) {
-      items.push({ ...item, hits: await retrieve(item.question) });
+      items.push({ ...item, hits: await retrieve(item.question, userId) });
     }
     return scoreRetrieval(items, { k: topK, minScore });
   }

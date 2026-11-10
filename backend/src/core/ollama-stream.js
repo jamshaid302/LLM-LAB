@@ -27,6 +27,7 @@ export async function completeOllamaChatResult({
   baseUrl = config.ollama.baseUrl,
   model = config.ollama.chatModel,
   messages,
+  tools,
   signal,
   options,
 } = {}) {
@@ -39,6 +40,7 @@ export async function completeOllamaChatResult({
         model,
         messages,
         stream: false,
+        ...(tools?.length ? { tools } : {}),
         ...(options ? { options } : {}),
       }),
       signal,
@@ -53,8 +55,10 @@ export async function completeOllamaChatResult({
   }
 
   const data = await response.json();
+  const toolCalls = data.message?.tool_calls;
   return {
     text: data.message?.content ?? "",
+    toolCalls: Array.isArray(toolCalls) ? toolCalls : [],
     promptTokens: countOrNull(data.prompt_eval_count),
     completionTokens: countOrNull(data.eval_count),
   };

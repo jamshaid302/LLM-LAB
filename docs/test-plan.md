@@ -204,9 +204,34 @@ Open **RAG** and ask one question, then open **Observability** and click **Refre
 | Ask `What is the capital of Brazil?` on RAG, then refresh | A card says `search missed`. Kept is `none`. Generation is `—` |
 | Send one message on **Streaming Chat**, then refresh | A `streaming.chat` card. Retrieval is `—` |
 
-## 11. What you are not testing yet
+## 11. LLM Evaluation
 
-These sidebar items say **soon** and have no page: LLM Evaluation, Hallucination Detection, AI Agents, Multi-Agent Systems, Security, Deployment, Multimodal AI, and Fine-Tuning.
+Open **LLM Evaluation**. This page does not write an answer.
+
+| Step | Expected result |
+| --- | --- |
+| Click **Score question set** | Recall@3 is 100% before and after. MRR after is 1.00. Unanswerable refused is 1/2. The Brazil row says refused. The CEO row says not refused |
+
+## 12. Hallucination Detection
+
+Open **Hallucination Detection**.
+
+| Step | Expected result |
+| --- | --- |
+| Check `What is the capital of Brazil?` | The verdict is `search missed`. Kept is none |
+| Check `Where is the company gym?` | The verdict is `grounded` or `replaced`. A `knowledge.txt` source is listed when the verdict is `replaced` |
+
+## 13. AI Agents
+
+Open **AI Agents**. This run uses `qwen2.5:7b` and can take a minute.
+
+| Step | Expected result |
+| --- | --- |
+| Run `Where is the company gym?` | Finished is yes. Arguments are valid. The tool is `search_documents`. Kept names `knowledge.txt`. The answer mentions the 3rd floor |
+
+## 14. What you are not testing yet
+
+These sidebar items say **soon** and have no page: Multi-Agent Systems, Security, Deployment, Multimodal AI, and Fine-Tuning.
 
 A hosted provider, Multimodal AI, and Fine-Tuning also need something this lab does not have yet: a paid API key, a vision model, and a GPU notebook. The build steps and the tests for those three are in [later-modules.md](later-modules.md). Run them when the key, the model, or the notebook is available. Until then they stay **soon**.
 

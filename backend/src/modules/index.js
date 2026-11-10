@@ -2,10 +2,13 @@ import fs from "node:fs/promises";
 
 import { config } from "../core/config.js";
 
+import { createAgentsModule } from "./agents/index.js";
 import { createConversationsModule } from "./conversations/index.js";
 import { createDocumentPipelineModule } from "./documents/index.js";
 import { createAdvancedRagModule } from "./advanced-rag/index.js";
+import { createEvaluationModule } from "./evaluation/index.js";
 import { createFundamentalsModule } from "./fundamentals/index.js";
+import { createHallucinationModule } from "./hallucination/index.js";
 import { createObservabilityModule } from "./observability/index.js";
 import { createTraceLog } from "./observability/trace-log.js";
 import { createProvidersModule } from "./providers/index.js";
@@ -61,5 +64,17 @@ export function createModules() {
       },
     }),
     createObservabilityModule({ log: traces }),
+    createEvaluationModule({
+      run: (userId) => ragService.evaluate(userId),
+    }),
+    createHallucinationModule({
+      ask: (question, userId) => ragService.ask(question, userId),
+    }),
+    createAgentsModule({
+      search: async (query, userId) => {
+        const hits = await ragService.retrieve(query, userId);
+        return applyCutoff(hits, config.rag.minScore).matched;
+      },
+    }),
   ];
 }

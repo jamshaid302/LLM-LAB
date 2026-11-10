@@ -356,52 +356,57 @@ There is no password.
 
 ---
 
-## Planned — evaluation
+## Built — evaluation
 
 ### How do you evaluate a RAG system?
 
-Split the question. Retrieval: given a question, did the right chunk appear in the top
-k? That is recall@k. Generation: given the right chunks, is the answer supported by
-them? A small golden set of question, expected chunk, and expected fact is enough to
-start. Run it in CI. A change that drops recall does not ship. Judging answers with
-another model works if you have checked that judge against a handful of your own labels.
+In this project the LLM Evaluation page scores the saved question set. Recall@k is
+whether the expected phrase was in the top k. MRR is whether it was near the top. The
+cutoff's effect is the same pair of numbers after scores under 0.5 are removed. On
+29 October 2026 that run was recall@3 of 1, MRR of 1, and 1 of 2 unanswerable questions
+refused. The chat model is not called. An LLM judge and a CI gate are not built.
 
 ---
 
-## Planned — hallucination detection
+## Built — hallucination detection
 
 ### How do you check that an answer is grounded?
 
-Split the answer into claims. For each claim, ask whether a retrieved chunk supports
-it, or check that a citation index points at a chunk that contains the claim. If it
-does not, drop the sentence or replace the answer with a refusal. This is a second
-model call or a strict string check. It is not free, and it is how you stop a fluent
-answer that cited the wrong paragraph.
+In this project the Hallucination Detection page asks one question through the RAG
+pipeline. If no chunk clears the cutoff, the verdict is that the search missed and the
+model is not called. If the model answers with only a citation, or with a name or code
+that is not in the kept chunks, the answer is replaced with "I don't know" and the
+verdict is `replaced`. The source line stays. A name the file itself states is kept, and
+the verdict is `grounded`. The check looks for names and codes. It is not a second model.
 
 ---
 
-## Planned — AI agents
+## Built — AI agents
 
 ### What is tool calling?
 
-You give the model a list of functions, with names and JSON arguments. It returns a
-call, your code runs the function, and you send the result back. The model does not
-touch the database. Your code does, with the same validation as any other API. In a
-MERN app the tools are your existing services: search orders, create a ticket, check
-inventory.
+In this project the AI Agents page gives the model one function, `search_documents`,
+with a `query` string. The model returns the name and the arguments. The API runs the
+same retrieval as Semantic Search, including the 0.5 cutoff and the person selected in
+Who is asking. The model does not read the files itself. The tool result is fenced in a
+`<document>` tag, and the system message says that text is data.
 
 ### What is a ReAct loop, and how do you bound it?
 
-Reason, act, observe, repeat. The model decides a tool, you run it, it sees the result,
-it decides again. Without a max step count it can loop until the bill arrives. I cap
-the steps, cap the time, and return the best answer so far when the cap hits. I log
-every tool call so a bad run is readable.
+The model calls the tool, the API runs it, and the result goes back for another turn.
+The loop stops at 4 steps or 3 minutes, whichever comes first, and returns the last
+answer it had. Each tool call is in the response: the name, the arguments, whether they
+were valid, and the file names and scores that were kept. Chunk text is not in that list.
 
 ### How do you evaluate an agent?
 
-Did it finish the task, how many steps did it take, and were the tool arguments valid?
-A short list of tasks with a known correct tool sequence is the test. "It sounded
-smart" is not.
+The page reports whether the run finished, how many steps it took, and whether every
+argument was valid. The automated test uses a fake model that returns a known tool call,
+an unknown tool, a step cap, and a time cap. A live run uses `qwen2.5:7b`, not the
+smaller chat model. On 29 October 2026, “Where is the company gym?” finished in 2
+steps. The call was valid, the query was “company gym location”, and `knowledge.txt`
+was kept at 0.772. The answer says the gym is on the 3rd floor. Multi-agent handoff
+is not built.
 
 ---
 

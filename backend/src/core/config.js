@@ -41,6 +41,8 @@ export const config = {
   ollama: {
     baseUrl: readString("OLLAMA_BASE_URL", "http://localhost:11434"),
     chatModel: readString("CHAT_MODEL", "qwen2.5:7b"),
+    // Tool calling is a separate model. A 1b chat model is a weak tool caller.
+    agentModel: readString("AGENT_MODEL", "qwen2.5:7b"),
     embedModel: readString("EMBED_MODEL", "nomic-embed-text"),
   },
   rag: {

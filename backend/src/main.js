@@ -11,7 +11,9 @@ app.listen(config.ports.api, async () => {
   console.log(`Modules: ${modules.map((m) => m.id).join(", ")}`);
 
   try {
-    await assertOllamaReady({ requireModels: [config.ollama.chatModel, config.ollama.embedModel] });
+    await assertOllamaReady({
+      requireModels: [config.ollama.chatModel, config.ollama.embedModel, config.ollama.agentModel],
+    });
   } catch (err) {
     console.error(`Ollama check failed: ${err.message}`);
     return;
