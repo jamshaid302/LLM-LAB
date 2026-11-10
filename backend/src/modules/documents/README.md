@@ -30,9 +30,8 @@ with the original file as base64. The file must be at most 512 KB. A path, an em
 a PDF with no text layer, or an attempt to replace `knowledge.txt` or `office.txt` is
 HTTP 400 and nothing is written.
 
-New files go to `docs/users/<who is asking>/`. Files already in the docs folder are shared.
-Shared rows have no Remove button. `X-User-Id` is `local` or `guest`. A missing header is
-Local. Anything else is HTTP 400.
+New files go to `docs/users/<account>/`. Files already in the docs folder are shared.
+Shared rows have no Remove button. In the running app the account is the session. Local and Guest have the same powers; each one sees the shared samples plus only their own uploads. A route called without a session still treats a missing `X-User-Id` as Local and rejects any other header with HTTP 400.
 
 The RAG page uploads through `/api/rag/documents`. Both routes use the one queue inside
 the API process.
@@ -48,7 +47,7 @@ the API process.
 ### Frontend (`frontend/src/modules/documents/DocumentsPage.jsx`)
 
 The list loads on open and polls while any row is queued or embedding. Upload, Retry, and
-Remove send `X-User-Id`. Switching **Who is asking** reloads the list.
+Remove uses the signed-in account. Log out and log in as the other person to reload that person's list.
 
 ## API
 
@@ -96,10 +95,10 @@ Start the API and the frontend. Open **Document Pipeline**.
 | Upload a small `.md` named `pipeline-note.md` whose text is `The visitor parking code is maple-17.` | The row appears as `queued` or `embedding`, then `ready` |
 | Open **Semantic Search** and search `maple-17` | A kept chunk names `pipeline-note.md` |
 | Return here and click **Remove** on `pipeline-note.md` | The row is gone. A notice includes the new chunk count |
-| Switch **Who is asking** to Guest | `pipeline-note.md` is not listed. The shared files are |
+| Log out and log in as Guest | `pipeline-note.md` is not listed. The shared files are |
 
 ## Known limitations
 
 - **The queue lives in this process.** A restart drops queued and failed jobs. The saved file changes the folder hash, and startup embeds the folder again. A separate worker is not built.
 - **Re-ingest still waits.** The RAG page button embeds the whole folder before it responds. This page does not re-ingest.
-- **This is a switch, not a login.** Guest does not see Local's uploads.
+- **Local and Guest are accounts, not a header switch.** They have the same powers. Guest does not see Local's uploads, and neither can remove the shared samples. A new account gets its own folder too. See [Accounts: Local and Guest](../../../../README.md#accounts-local-and-guest).

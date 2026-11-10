@@ -25,8 +25,7 @@ Search
    → JSON                               matched and dropped chunks, each with text, score, and source
 ```
 
-There is no prompt and no Ollama chat call on this path. Who is asking works the same
-way as on the RAG page: a missing header is Local, and an unknown header is HTTP 400.
+There is no prompt and no Ollama chat call on this path. The signed-in account limits the rows to the shared samples plus that person's chunks. Local and Guest see the same shared gym chunk and do not see each other's uploads. A route called without a session still treats a missing header as Local and rejects any other header with HTTP 400.
 
 ## How we implemented it
 
@@ -62,7 +61,7 @@ cutoff are listed separately. The page sends `X-User-Id`.
 ```
 
 A blank query is HTTP 400, `Missing 'query'`. A query over 4000 characters is HTTP 400.
-`X-User-Id: bob` is HTTP 400, `Choose local or guest`.
+A call with no session and `X-User-Id: bob` is HTTP 400, `Choose local or guest`. In the running app the session is the account, so Local, Guest, and an account you created are all accepted and do not see each other's uploads.
 
 ## Test plan
 
@@ -91,11 +90,11 @@ Start the API and the frontend. Open **Semantic Search**.
 | Search `Where is the company gym?` | A kept chunk from `knowledge.txt` mentions the 3rd floor. The score is about 0.8. There is no generated sentence |
 | Search `What is the capital of Brazil?` | Nothing is kept. Dropped scores are about 0.39 |
 | Search `What is the visitor wifi password?` | A kept chunk from `office.txt` contains `lantern-42` |
-| Switch **Who is asking** to Guest and search the gym question | The same shared `knowledge.txt` chunk is kept |
+| Log out, log in as Guest, and search the gym question | The same shared `knowledge.txt` chunk is kept. A file uploaded as Local is not in the list |
 
 ## Known limitations
 
-- **Deduplication, clustering, and recommendations are not built.** This page is nearest-chunk search.
+- **Repeated chunks are set aside, and kept chunks are counted by file.** The first three dropped chunks are the nearest misses.
 - **The cutoff is the RAG cutoff.** `RAG_MIN_SCORE` defaults to 0.5. Neighbors under that line are still returned, under "Below the cutoff."
 - **Search uses the same chunks as RAG.** An upload on the RAG page is what adds a file. This page does not upload.
-- **This is a switch, not a login.** Guest does not see Local's uploads. Shared files stay visible to both.
+- **Local and Guest have the same search rules.** Shared files stay visible to both. Each account's own uploads stay hidden from the other. See [Accounts: Local and Guest](../../../../README.md#accounts-local-and-guest).

@@ -34,6 +34,17 @@ describe("trace log", () => {
     expect(traces[1].sources).toEqual([{ source: "knowledge.txt", score: "0.774" }]);
     expect(JSON.stringify(traces)).not.toContain("secret gym sentence");
   });
+
+  it("keeps whether the reranker ran, how long it took, and why it failed", () => {
+    const log = createTraceLog();
+    log.add({ route: "rag.ask", reranked: true, rerankMs: 1100, rerankError: null });
+    log.add({ route: "rag.ask", reranked: false, rerankMs: 3, rerankError: "model download failed" });
+    log.add({ route: "streaming.chat" });
+    const [chat, failed, ok] = log.list();
+    expect(ok).toMatchObject({ reranked: true, rerankMs: 1100, rerankError: null });
+    expect(failed).toMatchObject({ reranked: false, rerankError: "model download failed" });
+    expect(chat).toMatchObject({ reranked: null, rerankMs: null });
+  });
 });
 
 describe("request traces", () => {

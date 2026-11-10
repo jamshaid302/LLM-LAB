@@ -39,7 +39,8 @@ export function groundAnswer(answer, chunks) {
     return { grounded: text === NO_ANSWER, answer: NO_ANSWER };
   }
 
-  const prose = text.replace(CITATION, " ").replace(/[^\p{L}\p{N}\s-]/gu, " ").replace(/\s+/g, " ").trim();
+  const uncited = text.replace(CITATION, " ");
+  const prose = uncited.replace(/[^\p{L}\p{N}\s-]/gu, " ").replace(/\s+/g, " ").trim();
   if (!prose) return { grounded: false, answer: NO_ANSWER };
 
   const corpus = (chunks ?? [])
@@ -47,9 +48,10 @@ export function groundAnswer(answer, chunks) {
     .join("\n")
     .toLowerCase();
 
+  // Citation ids like [1] are not claims, so they are removed before looking for codes.
   const claims = new Set();
-  for (const match of text.matchAll(CODE)) claims.add(match[0]);
-  for (const match of text.matchAll(NAME)) {
+  for (const match of uncited.matchAll(CODE)) claims.add(match[0]);
+  for (const match of uncited.matchAll(NAME)) {
     if (!ORDINARY.has(match[0])) claims.add(match[0]);
   }
 

@@ -1,3 +1,5 @@
+import { redactOutput } from "../../core/redact.js";
+import { stripFenceMarkup } from "../../core/untrusted.js";
 import { config } from "../../core/config.js";
 import { HttpError } from "../../core/http.js";
 import { completeOllamaChat, streamOllamaChat } from "../../core/ollama-stream.js";
@@ -140,7 +142,9 @@ export function createConversationService({
     }
 
     if (answer) {
-      await db.addMessage({ threadId, role: "assistant", content: answer, stopped });
+      const redacted = redactOutput(stripFenceMarkup(answer));
+      if (redacted !== answer.trim()) write(formatSse("replace", { text: redacted }));
+      await db.addMessage({ threadId, role: "assistant", content: redacted, stopped });
     }
     write(formatSse("done", { finish: stopped ? "stopped" : "stop" }));
   }

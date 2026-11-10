@@ -99,6 +99,7 @@ export default function ConversationsPage() {
           patchLast(() => ({ sources: data.sources, searchQuery: data.searchQuery }));
         }
         if (event === "token") patchLast((last) => ({ content: last.content + data.text }));
+        if (event === "replace") patchLast(() => ({ content: data.text }));
         if (event === "done" && data.finish === "stopped") patchLast(() => ({ stopped: true }));
         if (event === "error") patchLast((last) => ({ content: last.content || `Error: ${data.error}` }));
       });

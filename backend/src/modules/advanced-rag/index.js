@@ -8,7 +8,7 @@ export function createAdvancedRagModule(deps) {
     name: "Advanced RAG",
     router: createAdvancedRagRouter(service),
     health() {
-      return { retriever: "vector" };
+      return { retriever: deps.retriever ?? "vector" };
     },
   };
 }

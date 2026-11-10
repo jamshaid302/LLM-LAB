@@ -9,28 +9,35 @@ const VERDICT = {
 };
 
 export default function HallucinationPage() {
-  const [question, setQuestion] = useState("Who is the CEO of the company?");
+  const [question, setQuestion] = useState("Where is the company gym?");
   const [result, setResult] = useState(null);
+  const [judgement, setJudgement] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  async function check(event) {
+  async function post(path, event) {
     event.preventDefault();
     const text = question.trim();
     if (!text || loading) return;
     setLoading(true);
     setError("");
     try {
-      const res = await fetch("/api/hallucination/check", {
+      const res = await fetch(path, {
         method: "POST",
         headers: userHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ question: text }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
-      setResult(data);
+      if (path.endsWith("/judge")) {
+        setJudgement(data);
+      } else {
+        setResult(data);
+        setJudgement(null);
+      }
     } catch (err) {
-      setResult(null);
+      if (path.endsWith("/judge")) setJudgement(null);
+      else setResult(null);
       setError(err.message);
     } finally {
       setLoading(false);
@@ -42,12 +49,16 @@ export default function HallucinationPage() {
       <p style={styles.note}>
         One question goes through the same retrieval and grounding check as the RAG page. A citation-only reply, or a
         name or code that is not in the kept chunks, is replaced with "I don't know". A name the file itself states is
-        kept. This is a word check, not a second model.
+        kept. This is a word check, not a second model. Judge asks the chat model whether the answer includes the human
+        label for one of the saved questions, then compares that yes or no with the label.
       </p>
-      <form onSubmit={check} style={styles.form}>
+      <form onSubmit={(event) => post("/api/hallucination/check", event)} style={styles.form}>
         <input value={question} onChange={(event) => setQuestion(event.target.value)} style={styles.input} />
         <button type="submit" disabled={loading} style={styles.button}>
           {loading ? "Checking..." : "Check"}
+        </button>
+        <button type="button" disabled={loading} style={styles.button} onClick={(event) => post("/api/hallucination/judge", event)}>
+          Judge
         </button>
       </form>
       {error && <p style={styles.error}>{error}</p>}
@@ -62,6 +73,14 @@ export default function HallucinationPage() {
               ? "none"
               : result.sources.map((hit) => `${hit.source} ${hit.score}`).join(", ")}
           </p>
+        </article>
+      )}
+      {judgement && (
+        <article style={styles.card}>
+          <div style={styles.meta}>{judgement.agree ? "Judge agrees with the label" : "Judge disagrees with the label"}</div>
+          <p style={styles.note}>Label: {judgement.expect}</p>
+          <p style={styles.note}>Model said the fact is included: {judgement.modelSays ? "yes" : "no"}.</p>
+          <p style={styles.note}>The answer text includes the label: {judgement.labelSays ? "yes" : "no"}.</p>
         </article>
       )}
     </div>

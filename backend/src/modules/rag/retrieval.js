@@ -11,19 +11,37 @@ export function applyCutoff(hits, minScore) {
   return { matched, dropped };
 }
 
-function containsExpect(hit, expect) {
-  return hit.text.toLowerCase().includes(String(expect).toLowerCase());
+/** `expect` is one phrase or a list. A list needs every phrase, often from different chunks. */
+export function expectedPhrases(expect) {
+  return (Array.isArray(expect) ? expect : [expect]).map((phrase) => String(phrase).toLowerCase());
+}
+
+function hitContains(hit, phrase) {
+  return String(hit.text ?? "").toLowerCase().includes(phrase);
+}
+
+/** 1-based position where the last missing phrase is first covered, or 0 when one never is. */
+function coveringRank(hits, expect) {
+  const missing = new Set(expectedPhrases(expect));
+  for (let index = 0; index < hits.length; index += 1) {
+    for (const phrase of [...missing]) {
+      if (hitContains(hits[index], phrase)) missing.delete(phrase);
+    }
+    if (missing.size === 0) return index + 1;
+  }
+  return 0;
 }
 
 function reciprocalRank(hits, expect) {
-  const index = hits.findIndex((hit) => containsExpect(hit, expect));
-  return index === -1 ? 0 : 1 / (index + 1);
+  const rank = coveringRank(hits, expect);
+  return rank === 0 ? 0 : 1 / rank;
 }
 
 /**
  * Recall@k and mean reciprocal rank, before the cutoff and after it.
- * Answerable items must include `expect` (a phrase that should appear in the right chunk).
- * Unanswerable items have no `expect`; a refusal is every returned hit falling under `minScore`.
+ * Answerable items must include `expect`: a phrase, or a list of phrases, that the right
+ * chunks contain. Unanswerable items have no `expect`; a refusal is every returned hit
+ * falling under `minScore`.
  */
 export function scoreRetrieval(items, { k, minScore }) {
   const answerable = items.filter((item) => item.expect);
@@ -35,8 +53,8 @@ export function scoreRetrieval(items, { k, minScore }) {
     return {
       question: item.question,
       expect: item.expect,
-      foundBefore: beforeHits.some((hit) => containsExpect(hit, item.expect)),
-      foundAfter: afterHits.some((hit) => containsExpect(hit, item.expect)),
+      foundBefore: coveringRank(beforeHits, item.expect) > 0,
+      foundAfter: coveringRank(afterHits, item.expect) > 0,
       rankBefore: reciprocalRank(beforeHits, item.expect),
       rankAfter: reciprocalRank(afterHits, item.expect),
       topScore: beforeHits[0]?.score ?? null,

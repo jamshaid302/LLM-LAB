@@ -28,4 +28,13 @@ describe("groundAnswer", () => {
     const verdict = groundAnswer("The gym is on the 3rd floor.", gym);
     expect(verdict.grounded).toBe(true);
   });
+
+  it("does not treat a citation id as a number the chunk must contain", () => {
+    const verdict = groundAnswer("The company gym is located on the 3rd floor [1].", gym);
+    expect(verdict).toEqual({ grounded: true, answer: "The company gym is located on the 3rd floor [1]." });
+  });
+
+  it("still rejects a number outside the citation that the chunk lacks", () => {
+    expect(groundAnswer("The gym is on the 5th floor [1].", gym).grounded).toBe(false);
+  });
 });

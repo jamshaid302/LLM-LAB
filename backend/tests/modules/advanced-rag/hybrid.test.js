@@ -113,6 +113,46 @@ describe("POST /api/advanced-rag/compare", () => {
     expect(res.body.hybrid.recallAtK.after).toBe(1);
   });
 
+  it("keeps the cross-encoder when it moves the answer inside k from the wide list", async () => {
+    const app = createApp([
+      createAdvancedRagModule({
+        k: 1,
+        minScore: 0.5,
+        candidateK: 2,
+        searchWide: async () => [
+          { text: chunks[0].text, source: "knowledge.txt", score: 0.8 },
+          { text: chunks[1].text, source: "knowledge.txt", score: 0.7 },
+        ],
+        listChunks: async () => chunks,
+        loadSuite: async () => ({ answerable: [{ question: "access code", expect: "4829" }], unanswerable: [] }),
+        score: (items) => scoreRetrieval(items, { k: 1, minScore: 0.5 }),
+        crossEncoder: {
+          model: "fake-cross-encoder",
+          score: async (_query, texts) => texts.map((text) => (text.includes("4829") ? 9 : -9)),
+        },
+      }),
+    ]);
+
+    const res = await request(app).post("/api/advanced-rag/compare");
+    expect(res.body.vector.recallAtK.after).toBe(0);
+    expect(res.body.crossEncoder.recallAtK.after).toBe(1);
+    expect(res.body.crossEncoderKept).toBe(true);
+    expect(res.body.crossEncoderModel).toBe("fake-cross-encoder");
+    expect(res.body.crossEncoderError).toBeNull();
+  });
+
+  it("reports why there is no cross-encoder score instead of failing the compare", async () => {
+    const app = appWith({
+      searchWide: async () => [{ text: chunks[0].text, source: "knowledge.txt", score: 0.8 }],
+      suite: { answerable: [{ question: "gym", expect: "3rd floor" }], unanswerable: [] },
+    });
+    const res = await request(app).post("/api/advanced-rag/compare");
+    expect(res.status).toBe(200);
+    expect(res.body.crossEncoder).toBeNull();
+    expect(res.body.crossEncoderKept).toBe(false);
+    expect(res.body.crossEncoderError).toBe("No cross-encoder configured");
+  });
+
   it("rejects an unknown user", async () => {
     const app = appWith({
       searchWide: async () => [],

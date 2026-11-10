@@ -3,9 +3,18 @@ import { lazy } from "react";
 /**
  * One entry per platform module. `ready` modules have a page and a backend router at
  * /api/<id>; `planned` ones show up in the sidebar so the roadmap is visible in the app.
- * Group order here controls sidebar order.
+ * The learning path is the one page with no backend router. Group order here controls
+ * sidebar order.
  */
 export const modules = [
+  {
+    id: "learn",
+    name: "Learning Path",
+    group: "Start Here",
+    status: "ready",
+    description: "Every LLM, generative AI, and RAG concept in order, with where to try it in this lab.",
+    Page: lazy(() => import("./learn/LearnPage.jsx")),
+  },
   {
     id: "fundamentals",
     name: "LLM Fundamentals",
@@ -106,9 +115,9 @@ export const modules = [
     id: "security",
     name: "Security",
     group: "Production",
-    status: "planned",
-    description:
-      "Prompt injection defenses, PII handling, output sanitization, and per-user data isolation.",
+    status: "ready",
+    description: "A shared limit on ask, stream, and upload. Counts reset on restart.",
+    Page: lazy(() => import("./security/SecurityPage.jsx")),
   },
   {
     id: "observability",
@@ -122,8 +131,9 @@ export const modules = [
     id: "deployment",
     name: "Deployment",
     group: "Production",
-    status: "planned",
-    description: "Docker, CI, rate limiting, and graceful degradation when a model is unavailable.",
+    status: "ready",
+    description: "The API runs in a container. Tests run in a workflow. Ollama stays on the host.",
+    Page: lazy(() => import("./deployment/DeploymentPage.jsx")),
   },
   {
     id: "multimodal",
@@ -141,7 +151,7 @@ export const modules = [
   },
 ];
 
-export const defaultModuleId = "fundamentals";
+export const defaultModuleId = "learn";
 
 export function findModule(id) {
   return modules.find((m) => m.id === id);

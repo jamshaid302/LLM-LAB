@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
 
+import { userHeaders } from "../../lib/user.js";
+
 export default function ProvidersPage() {
   const [models, setModels] = useState([]);
   const [hostedExample, setHostedExample] = useState(null);
@@ -35,7 +37,7 @@ export default function ProvidersPage() {
     try {
       const res = await fetch("/api/providers/complete", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: userHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ model, prompt: text }),
       });
       const data = await res.json();

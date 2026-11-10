@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 
 import { extractPdfText } from "./pdf-text.js";
-import { SHARED_OWNER, USERS } from "../../core/users.js";
+import { SHARED_OWNER, isAccountId } from "../../core/users.js";
 
 const DOCUMENT_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,80}$/;
 
@@ -96,12 +96,16 @@ async function readDirectory(dirPath) {
 
   const usersDir = path.join(dirPath, "users");
   if (await directoryExists(usersDir)) {
-    for (const user of USERS) {
-      const folder = path.join(usersDir, user.id);
+    const userNames = (await fs.readdir(usersDir, { withFileTypes: true }))
+      .filter((entry) => entry.isDirectory() && isAccountId(entry.name))
+      .map((entry) => entry.name)
+      .sort();
+    for (const userId of userNames) {
+      const folder = path.join(usersDir, userId);
       if (!(await directoryExists(folder))) continue;
       const names = (await fs.readdir(folder)).filter(isCorpusFile).sort();
       for (const name of names) {
-        documents.push(await readFileDocument(hash, folder, name, user.id));
+        documents.push(await readFileDocument(hash, folder, name, userId));
       }
     }
   }

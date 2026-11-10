@@ -13,8 +13,20 @@ The example file sets it to **5001**. Use that port in any command below.
 3. Start Ollama. The models this lab uses are `llama3.2:1b` (or whatever `CHAT_MODEL` is in `backend/.env`), `qwen2.5:7b`, and `nomic-embed-text`.
 4. In one terminal, from `backend/`, run `npm run dev`.
 5. In another terminal, from `frontend/`, run `npm run dev`.
-6. Open http://localhost:5173. The header shows the chat model name, such as `llama3.2:1b`. `checking backend...` or `backend offline` means the API is not up.
+6. Open http://localhost:5173. Log in with account `local` and password `local`, or create an account. The header shows the chat model name, such as `llama3.2:1b`. `checking backend...` or `backend offline` means the API is not up.
 7. From `backend/`, run `npm test`. This does not need Ollama. Every test file should pass.
+
+## Start Here: Learning Path
+
+After login the app opens on **Learning Path**. It needs no API call.
+
+| Step | Expected result |
+| --- | --- |
+| Read the line at the top | It counts concepts by status: built, measured but not used, planned, and left out |
+| Click **Try it** on "Reranking with a cross-encoder" | The Advanced RAG page opens |
+| Click **Try it** on "Fine-tuning: SFT, LoRA, QLoRA" | The Fine-Tuning placeholder page for a planned module. Its sidebar item says **soon** |
+
+The same list with file and test references is [concepts.md](concepts.md).
 
 ## 2. LLM Fundamentals
 
@@ -81,9 +93,10 @@ Open **RAG**. The line above the buttons says `Vector store: chroma`. `knowledge
 | Click **Stop** while an answer is still arriving | The partial text stays, with a Stopped line |
 | Ask `When are pets allowed in the office?` | Fridays. The top source is about 0.7 |
 | Ask `What is the capital of Brazil?` | `I don't know based on the provided documents.` No kept sources. Dropped scores are about 0.39 |
-| Ask `Who is the CEO of the company?` | This still reaches the model. The top score is about 0.57, just above the 0.5 cutoff. The documents do not name a CEO |
-| Ask `What is the visitor wifi password?` | `lantern-42`. The source is `office.txt` and the top score is about 0.84 |
-| Click **Score retrieval** | Recall@3 before 100%, after 100%. Unanswerable refused: 1 of 2. The CEO question is the one that is not refused |
+| Ask `Who is the CEO of the company?` | This still reaches the model, because a source clears the 0.5 cutoff. The documents do not name a CEO. The reply must not name one |
+| Ask `What is the visitor wifi password?` | `lantern-42`. The source is `office.txt` |
+| Ask `What is the server room access code, and which extension reaches the IT service desk?` | Both facts: `4829` and extension `7000`. Sources include `knowledge.txt` and `it-security.md`. This one needs two chunks; plain vector search misses the second, the cross-encoder brings it in |
+| Click **Score retrieval** | Recall@3 before 100%, after 100%. Unanswerable refused: 2 of 8. The other six reach the model |
 
 Upload. Make a file named `notes.txt` whose only sentence is `The visitor parking code is maple-17.`
 
@@ -112,18 +125,25 @@ Restart the API without changing the files in `backend/src/modules/rag/docs/`. T
 
 Shared files in the list say **shared**. They have no Remove button. `knowledge.txt`, `office.txt`, and the cent-trading notes stay shared.
 
-## Who is asking
+## Accounts: Local and Guest
 
-The header at the top of every page is **Who is asking**. The choices are Local and Guest. There is no password. A new upload and a new thread belong to the person selected. A question searches the shared samples plus that person's own files.
+Local and Guest are two built-in accounts with the same powers. They exist so you can prove that one person's files and chats stay hidden from the other. Guest is not a limited mode.
+
+Log in with the account id and password. Local starts as `local` / `local`. Guest starts as `guest` / `guest`. **Create an account** adds another person with the same powers. A later step that says switch person means log out and log in as that account.
+
+Each account can ask, upload, and chat. None of them can remove the shared samples (`knowledge.txt`, `office.txt`, and the cent-trading notes). Those stay visible to everyone. An upload from Guest is stored under `docs/users/guest/` and does not appear for Local. Chats and the 20-request budget are separate the same way. Search returns the shared samples plus only the signed-in account's files.
 
 | Step | Expected result |
 | --- | --- |
-| Set **Who is asking** to Guest. Upload a small file named `guest-note.md` whose text is `The visitor parking code is maple-17. The CEO is Alice.` | The file appears for Guest, with **Remove** |
+| Log out and log in as Guest. Upload a small file named `guest-note.md` whose text is `The visitor parking code is maple-17. The CEO is Alice.` | The file appears for Guest, with **Remove** |
 | Ask `What is the visitor parking code?` as Guest | The source line names `guest-note.md` |
-| Switch **Who is asking** to Local | `guest-note.md` is not in the file list. Ask the parking question. `guest-note.md` is not cited |
+| Log out and log in as Local | `guest-note.md` is not in the file list. Ask the parking question. `guest-note.md` is not cited |
+| On the login form, choose **Create an account**. Use id `sam` and a password of at least 4 characters | The header shows `sam` |
+| Upload `sam-note.md` with the text `Sam keeps a red notebook.` | The file is listed for `sam` |
+| Log out and log in as Local | `sam-note.md` is not in the file list |
 | Open **Conversations** as Guest, click **New chat**, and send one message | The thread is in Guest's list |
-| Switch to Local and open **Conversations** | That thread is not in the list |
-| Switch back to Guest and click **Remove** on `guest-note.md` | The file is gone |
+| Log in as Local and open **Conversations** | That thread is not in the list |
+| Log in as Guest and click **Remove** on `guest-note.md` | The file is gone |
 
 ## 5. Semantic Search
 
@@ -134,9 +154,10 @@ Open **Semantic Search**. This page does not write an answer. It lists chunks.
 | Search `Where is the company gym?` | A kept chunk from `knowledge.txt` mentions the 3rd floor. The score is about 0.8. There is no generated sentence |
 | Search `What is the capital of Brazil?` | The page says nothing scored high enough. Dropped scores are about 0.39 |
 | Search `What is the visitor wifi password?` | A kept chunk from `office.txt` contains `lantern-42` |
-| Switch **Who is asking** to Guest and search the gym question | The same shared `knowledge.txt` chunk is kept |
+| Search `Where is the company gym?` again | The page names the file counts. A repeated sentence, if one is returned, is counted aside |
+| Log out and log in as Guest, then search the gym question | The same shared `knowledge.txt` chunk is kept |
 
-Switch **Who is asking** back to Local when you are done.
+Log out and log in as Local when you are done.
 
 ## 6. Document Pipeline
 
@@ -148,18 +169,19 @@ Open **Document Pipeline**. Shared files say `ready` and `shared`.
 | Upload a small `.md` named `pipeline-note.md` whose text is `The visitor parking code is maple-17.` | The row appears, then its status becomes `ready` |
 | Open **Semantic Search** and search `maple-17` | A kept chunk names `pipeline-note.md` |
 | Return to **Document Pipeline** and click **Remove** | The row is gone |
-| Switch **Who is asking** to Guest | `pipeline-note.md` is not listed. The shared files still are |
+| Log out and log in as Guest | `pipeline-note.md` is not listed. The shared files still are |
 
-Switch **Who is asking** back to Local. Delete `pipeline-note.md` first if it is still listed.
+Log out and log in as Local. Delete `pipeline-note.md` first if it is still listed.
 
 ## 7. Advanced RAG
 
-Open **Advanced RAG**. This page does not answer the question. It scores two retrievers.
+Open **Advanced RAG**. This page does not answer the question. It scores five retrievers on the 57 questions.
 
 | Step | Expected result |
 | --- | --- |
-| Click **Compare retrieval** | Vector and Hybrid both show recall@3 of 100% before and after, MRR 1.00, and unanswerable refused 1/2. The line says hybrid did not beat vector search |
-| Open **RAG** and ask `What is the server room access code?` | The reply still comes from the vector search. The source is `knowledge.txt` |
+| Read the line above the button | RAG answers with: vector + cross-encoder |
+| Click **Compare retrieval** | After a minute or two, five cards. Vector about 96% recall after the cutoff and MRR 0.88, with two missed two-fact questions. Hybrid 98%. Overlap rerank about 90%, worse than vector. Cross-encoder 100% and MRR about 0.92, nothing missed. Parent document 98% with the highest MRR |
+| Open **RAG** and ask `What is the server room access code?` | `4829`. The source is `knowledge.txt` |
 
 ## 8. Streaming Chat
 
@@ -200,7 +222,7 @@ Open **RAG** and ask one question, then open **Observability** and click **Refre
 
 | Step | Expected result |
 | --- | --- |
-| Ask `Where is the company gym?` on RAG, then refresh this page | A `rag.stream` card says `answered`. Retrieval and generation times are filled in. Kept names `knowledge.txt` |
+| Ask `Where is the company gym?` on RAG, then refresh this page | A `rag.stream` card says `answered`. Retrieval and generation times are filled in. A line says it was reranked by the cross-encoder, with the time. Kept names `knowledge.txt` |
 | Ask `What is the capital of Brazil?` on RAG, then refresh | A card says `search missed`. Kept is `none`. Generation is `—` |
 | Send one message on **Streaming Chat**, then refresh | A `streaming.chat` card. Retrieval is `—` |
 
@@ -210,7 +232,8 @@ Open **LLM Evaluation**. This page does not write an answer.
 
 | Step | Expected result |
 | --- | --- |
-| Click **Score question set** | Recall@3 is 100% before and after. MRR after is 1.00. Unanswerable refused is 1/2. The Brazil row says refused. The CEO row says not refused |
+| Click **Score question set** | Recall@3 is 100% before and after. MRR after is about 0.92. Unanswerable refused is 2/8. The Brazil row says refused. The CEO row says not refused. Two-fact rows say "needs two chunks" |
+| Read **Saved baseline** | 49 answerable questions (8 need two chunks) and 8 unanswerable, over 101 chunks from 9 files. The rerank comparison. An answer run for qwen2.5:7b with label and judge scores |
 
 ## 12. Hallucination Detection
 
@@ -220,6 +243,7 @@ Open **Hallucination Detection**.
 | --- | --- |
 | Check `What is the capital of Brazil?` | The verdict is `search missed`. Kept is none |
 | Check `Where is the company gym?` | The verdict is `grounded` or `replaced`. A `knowledge.txt` source is listed when the verdict is `replaced` |
+| Click **Judge** on `Where is the company gym?` | The card names the label `3rd floor` and whether the model and the label agree. This calls the chat model |
 
 ## 13. AI Agents
 
@@ -229,10 +253,42 @@ Open **AI Agents**. This run uses `qwen2.5:7b` and can take a minute.
 | --- | --- |
 | Run `Where is the company gym?` | Finished is yes. Arguments are valid. The tool is `search_documents`. Kept names `knowledge.txt`. The answer mentions the 3rd floor |
 
-## 14. What you are not testing yet
+## 14. Security
 
-These sidebar items say **soon** and have no page: Multi-Agent Systems, Security, Deployment, Multimodal AI, and Fine-Tuning.
+Open **Security**. This page does not send an ask.
+
+| Step | Expected result |
+| --- | --- |
+| Read the card | It shows 20 requests / 60 seconds and a failed-login limit. The list includes RAG ask, RAG stream, Streaming Chat, a conversation stream, and both upload routes |
+| Change the password, then try the old password | The form returns to login. The old password is refused. The new one works |
+| Log out | The login form returns. An ask is refused until you log in again |
+
+## 15. Deployment
+
+Open **Deployment**. This page does not call a model.
+
+| Step | Expected result |
+| --- | --- |
+| Read the card | It names `backend/Dockerfile`, `frontend/Dockerfile`, and `.github/workflows/test.yml`. Ollama is an `http` URL. The note says the tests check the committed baseline and do not score retrieval live |
+
+## 16. Measured runs from the command line
+
+These need Docker (for the live tests) or Ollama (for the eval scripts). Run them from
+`backend/` before you commit a change to retrieval, prompts, or the question set.
+
+| Command | Expected result |
+| --- | --- |
+| `npm run test:live` | 14 tests pass against the real Chroma and MongoDB: owner filtering, accounts, traces, and the external embed worker. No `lab_live_*` database is left afterward |
+| `npm run eval:retrieval` | Recall@3 1.0, MRR 0.915, refused by cutoff 2. "No drop compared with eval/baseline.json". About 2 minutes |
+| `npm run eval:rerank` | The five-pass table from Advanced RAG. About 2 minutes |
+| `npm run eval:answers -- --model qwen2.5:7b --limit 5` | Five answerable lines that start `ok judge=yes`, then five unanswerable lines. Nothing is saved |
+| `npm run eval:answers -- --model qwen2.5:7b --write` | All 57 questions, about 22 minutes. On 29 October 2026: 49/49 by label, 48/49 by judge, 8/8 unanswerable refused. The result is saved under `answers["qwen2.5:7b"]` and shows on the Evaluation page. `npm test` then checks it against the floors |
+| Set `RAG_RERANK=off` in the shell and run `npm run eval:retrieval` | Recall falls to about 0.96 and the command exits 1 with "Retrieval dropped". That is the regression check working |
+
+## 17. What you are not testing yet
+
+These sidebar items say **soon** and have no page: Multi-Agent Systems, Multimodal AI, and Fine-Tuning.
 
 A hosted provider, Multimodal AI, and Fine-Tuning also need something this lab does not have yet: a paid API key, a vision model, and a GPU notebook. The build steps and the tests for those three are in [later-modules.md](later-modules.md). Run them when the key, the model, or the notebook is available. Until then they stay **soon**.
 
-There is no password. The header **Who is asking** is Local or Guest. Upload, delete, and re-ingest stay open on this machine for the person selected. The document fence does not guarantee the model will ignore a file.
+Log in with an account. Local and Guest start as `local` and `guest`. A new account has its own files. Ask, stream, and upload share 20 requests per 60 seconds for that person. Delete and re-ingest stay open. The document fence does not guarantee the model will ignore a file. Multi-agent handoff, a hosted provider, multimodal, and fine-tuning are not built. Automatic model routing is not built.

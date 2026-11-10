@@ -54,14 +54,22 @@ export default function SemanticSearchPage() {
         <div>
           <p style={styles.note}>
             Cutoff {result.minScore}. Kept {result.matched.length}. Below the cutoff {result.dropped.length}.
+            {result.duplicates?.length ? ` Repeated chunks set aside: ${result.duplicates.length}.` : ""}
           </p>
+          {result.clusters?.length > 0 && (
+            <p style={styles.note}>
+              Files: {result.clusters.map((cluster) => `${cluster.source} (${cluster.count})`).join(", ")}
+            </p>
+          )}
           {result.matched.length === 0 && (
             <p style={styles.note}>Nothing scored high enough to keep.</p>
           )}
           {result.matched.map((hit, index) => (
             <Hit key={`kept-${index}`} hit={hit} />
           ))}
-          {result.dropped.length > 0 && <h2 style={styles.subhead}>Below the cutoff</h2>}
+          {result.dropped.length > 0 && (
+            <h2 style={styles.subhead}>Below the cutoff (the first three are the nearest misses)</h2>
+          )}
           {result.dropped.map((hit, index) => (
             <Hit key={`dropped-${index}`} hit={hit} dim />
           ))}

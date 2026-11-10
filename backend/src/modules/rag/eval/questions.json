@@ -10,10 +10,62 @@
     { "question": "What does the MERN stack consist of?", "expect": "MongoDB" },
     { "question": "What is retrieval-augmented generation?", "expect": "knowledge base" },
     { "question": "What port does Ollama listen on?", "expect": "11434" },
-    { "question": "What is the visitor wifi password?", "expect": "lantern-42" }
+    { "question": "What is the visitor wifi password?", "expect": "lantern-42" },
+
+    { "question": "How many vacation days do full-time employees get per year?", "expect": "25 vacation days", "answer": "25" },
+    { "question": "How many unused vacation days can be carried into the next year?", "expect": "Up to 5 unused vacation days", "answer": "5" },
+    { "question": "By what date must carried-over vacation days be used?", "expect": "March 31" },
+    { "question": "When is a doctor's note required for sick leave?", "expect": "after 3 consecutive sick", "answer": "3" },
+    { "question": "How long is parental leave for primary caregivers?", "expect": "16 weeks" },
+    { "question": "How many public holidays does the company observe?", "expect": "11 public holidays", "answer": "11" },
+
+    { "question": "Where must business trips be booked?", "expect": "TripDesk" },
+    { "question": "Which flights can be booked in business class?", "expect": "6 hours or longer", "answer": "6 hours" },
+    { "question": "What is the hotel limit per night in London?", "expect": "260 USD per night", "answer": "260" },
+    { "question": "Above what amount does an expense need an itemized receipt?", "expect": "above 25 USD", "answer": "25" },
+    { "question": "How soon after approval are expense claims paid?", "expect": "within 10 business days", "answer": "10 business days" },
+
+    { "question": "How long must company passwords be?", "expect": "at least 14 characters", "answer": "14" },
+    { "question": "Why are text message codes not accepted for multi-factor authentication?", "expect": "SIM swapping" },
+    { "question": "Which extension reaches the IT service desk?", "expect": "extension 7000", "answer": "7000" },
+    { "question": "What should I do with a suspicious email?", "expect": "Report Phish" },
+    { "question": "Which VPN must be used on hotel wifi?", "expect": "NorthVPN" },
+
+    { "question": "What time should new employees arrive on their first day?", "expect": "9:30" },
+    { "question": "How long is the probation period for new employees?", "expect": "probation period lasts 90 days", "answer": "90 days" },
+    { "question": "How long does a new employee keep an onboarding buddy?", "expect": "onboarding buddy from another team", "answer": "30 days" },
+
+    { "question": "How much does the Lumen Pro plan cost?", "expect": "Pro plan costs 8 USD", "answer": "8" },
+    { "question": "Within how many days can a Lumen plan be refunded?", "expect": "refunded within 14 days", "answer": "14 days" },
+    { "question": "Which regions can store a Lumen workspace's data?", "expect": "Frankfurt", "answer": ["EU", "US"] },
+    { "question": "What is the Lumen API rate limit?", "expect": "600 requests per minute", "answer": "600" },
+
+    { "question": "About how many characters is one token in English?", "expect": "about four", "answer": "four" },
+    { "question": "What does a temperature of 0 do?", "expect": "temperature of 0 always picks", "answer": "most likely" },
+    { "question": "What is a cross-encoder?", "expect": "reads the question and one chunk together", "answer": "together" },
+    { "question": "What constant does reciprocal rank fusion add to the rank?", "expect": "60 plus the rank", "answer": "60" },
+    { "question": "What is QLoRA?", "expect": "4-bit quantized", "answer": "4-bit" },
+
+    { "question": "How many USC are credited when a client moves $100 to a cent account?", "expect": "10,000 USC" },
+    { "question": "Which currency does the client wallet use in Phase 1 of cent accounts?", "expect": "wallet remains USD-only", "answer": "USD" },
+
+    { "question": "How many vacation days and how many paid sick days do employees get?", "expect": ["25 vacation days", "10 paid sick days"], "answer": ["25", "10"] },
+    { "question": "What is the hotel limit in most cities, and what is the daily per diem?", "expect": ["180 USD per night", "45 USD for each full travel day"], "answer": ["180", "45"] },
+    { "question": "What floor is the gym on, and what is the visitor wifi password?", "expect": ["3rd floor", "lantern-42"] },
+    { "question": "How long must passwords be, and after how many minutes does the laptop screen lock?", "expect": ["at least 14 characters", "after 5 minutes"], "answer": ["14", "5 minutes"] },
+    { "question": "What is the Lumen refund window, and what uptime does the Team plan guarantee?", "expect": ["refunded within 14 days", "99.9 percent"], "answer": ["14", "99.9"] },
+    { "question": "What time do new employees arrive on day one, and how long is probation?", "expect": ["9:30", "lasts 90 days"], "answer": ["9:30", "90"] },
+    { "question": "When are expense reports due, and where are business trips booked?", "expect": ["last day of each calendar month", "TripDesk"], "answer": ["last day", "TripDesk"] },
+    { "question": "What is the server room access code, and which extension reaches the IT service desk?", "expect": ["4829", "extension 7000"], "answer": ["4829", "7000"] }
   ],
   "unanswerable": [
     { "question": "What is the capital of Brazil?" },
-    { "question": "Who is the CEO of the company?" }
+    { "question": "Who is the CEO of the company?" },
+    { "question": "Who won the 2018 football World Cup?" },
+    { "question": "What is the company's stock price today?" },
+    { "question": "What is the dress code in the office?" },
+    { "question": "How much does the Lumen Enterprise plan cost?" },
+    { "question": "How many vacation days do contractors get?" },
+    { "question": "What is the wifi password for the employee network?" }
   ]
 }

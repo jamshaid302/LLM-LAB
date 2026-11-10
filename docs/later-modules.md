@@ -17,6 +17,16 @@ The local chat call these plans plug into is `completeOllamaChatResult` in
 `backend/src/core/ollama-stream.js`. It returns the reply text plus the token counts.
 A second provider has to return that same shape.
 
+Smaller planned concepts need no new hardware and are not sections here: HyDE and
+multi-query expansion, a semantic cache, graph RAG, claim-level faithfulness scores,
+multi-agent handoff, web search, and quantization comparisons. Each has a short "the way
+I would build it is…" in [concepts.md](concepts.md), and each would be measured with the
+existing question set (`npm run eval:retrieval`, `npm run eval:answers`) before it is
+used.
+
+The reranker that used to be listed as missing is built: a local cross-encoder, measured
+and adopted. See the [Advanced RAG README](../backend/src/modules/advanced-rag/README.md).
+
 ---
 
 ## Hosted provider

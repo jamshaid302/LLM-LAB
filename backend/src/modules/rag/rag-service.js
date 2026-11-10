@@ -5,10 +5,13 @@ import { fileURLToPath } from "node:url";
 import { DEFAULT_USER, SHARED_OWNER } from "../../core/users.js";
 import { config } from "../../core/config.js";
 import { HttpError } from "../../core/http.js";
+import { redactOutput } from "../../core/redact.js";
 import { completeOllamaChat, completeOllamaChatResult, streamOllamaChat } from "../../core/ollama-stream.js";
 import { createEmbeddings } from "../../core/ollama.js";
 import { formatSse, isAbortError } from "../../core/sse.js";
+import { stripFenceMarkup } from "../../core/untrusted.js";
 
+import { createAnswerCache } from "./answer-cache.js";
 import { splitText } from "./chunking.js";
 import { documentName, isProtectedDocument, readCorpus } from "./corpus.js";
 import { createEmbedQueue } from "./embed-queue.js";
@@ -49,6 +52,10 @@ export function createRagService({
       model: config.ollama.chatModel,
       ...args,
     }),
+  answerCache = createAnswerCache(),
+  externalJobs = null,
+  rerank = null,
+  rerankCandidates = 20,
 } = {}) {
   const vectorStore =
     store ?? createVectorStore({ kind: storeKind, embeddings, chromaUrl });
@@ -88,6 +95,7 @@ export function createRagService({
   async function ingest() {
     await embedQueue.whenIdle();
     const result = await sync({ force: true });
+    answerCache.clear();
     return result.chunks;
   }
 
@@ -118,7 +126,13 @@ export function createRagService({
     return { chunks: chunkCount, embedded: true, store: vectorStore.kind };
   }
 
-  const embedQueue = createEmbedQueue((source) => indexOne(source));
+  const embedQueue = createEmbedQueue(async (source) => {
+    try {
+      return await indexOne(source);
+    } finally {
+      answerCache.clear();
+    }
+  });
 
   function requireDocumentName(filename) {
     const name = documentName(filename);
@@ -157,7 +171,13 @@ export function createRagService({
       await fs.writeFile(path.join(dir, name), body, "utf-8");
     }
 
-    return embedQueue.enqueue(jobKey(userId, name));
+    const key = jobKey(userId, name);
+    answerCache.clear();
+    if (externalJobs) {
+      await externalJobs.enqueue(key, { userId, name });
+      return { filename: key, status: "queued", chunks: null, error: null, done: Promise.resolve(null) };
+    }
+    return embedQueue.enqueue(key);
   }
 
   /** Upload route. Returns the queued job and does not wait for the embed. */
@@ -195,6 +215,17 @@ export function createRagService({
     }
     const job = embedQueue.get(jobKey(userId, name));
     if (job) return publicJob(job);
+    if (externalJobs) {
+      const external = await externalJobs.get(jobKey(userId, name));
+      if (external) {
+        return {
+          filename: name,
+          status: external.status,
+          chunks: external.result?.chunks ?? null,
+          error: external.error,
+        };
+      }
+    }
     const documents = await listDocuments(userId);
     if (!documents.some((document) => document.name === name)) {
       throw new HttpError(404, "Document not found");
@@ -206,6 +237,14 @@ export function createRagService({
   async function retryDocument(filename, userId = DEFAULT_USER) {
     const name = requireDocumentName(filename);
     const key = jobKey(userId, name);
+    if (externalJobs) {
+      const current = await externalJobs.get(key);
+      if (!current || current.status !== "failed") {
+        throw new HttpError(400, "That file is not waiting for a retry");
+      }
+      const next = await externalJobs.enqueue(key, { userId, name });
+      return { filename: name, status: next.status, chunks: null, error: null };
+    }
     const current = embedQueue.get(key);
     if (!current || current.status !== "failed") {
       throw new HttpError(400, "That file is not waiting for a retry");
@@ -236,6 +275,7 @@ export function createRagService({
       throw err;
     }
     const key = jobKey(userId, name);
+    answerCache.clear();
     embedQueue.forget(key);
     const job = embedQueue.enqueue(key);
     const result = await job.done;
@@ -254,13 +294,31 @@ export function createRagService({
     }));
   }
 
+  /**
+   * The retriever the model sees. With a reranker, the top `rerankCandidates` vector hits
+   * are rescored and the best `topK` are kept. If the reranker fails, vector order is used.
+   */
+  async function retrieveRanked(question, userId = DEFAULT_USER) {
+    if (typeof rerank !== "function") {
+      return { hits: await retrieve(question, userId), reranked: false, rerankMs: null, rerankError: null };
+    }
+    const wide = await retrieve(question, userId, Math.max(rerankCandidates, topK));
+    const started = Date.now();
+    try {
+      const ranked = await rerank(question, wide);
+      return { hits: ranked.slice(0, topK), reranked: true, rerankMs: Date.now() - started, rerankError: null };
+    } catch (err) {
+      return { hits: wide.slice(0, topK), reranked: false, rerankMs: null, rerankError: err.message };
+    }
+  }
+
   async function listChunks(userId = DEFAULT_USER) {
     if (typeof vectorStore.list !== "function") return [];
     return vectorStore.list(userId);
   }
 
   async function prepare(question, userId = DEFAULT_USER) {
-    const hits = await retrieve(question, userId);
+    const { hits, ...ranking } = await retrieveRanked(question, userId);
     const { matched, dropped } = applyCutoff(hits, minScore);
     const matchedSources = matched.map(present);
     const droppedSources = dropped.map(present);
@@ -271,6 +329,7 @@ export function createRagService({
         answer: NO_ANSWER,
         matchedSources,
         droppedSources,
+        ranking,
         prompt: null,
       };
     }
@@ -284,15 +343,20 @@ export function createRagService({
       answer: null,
       matchedSources,
       droppedSources,
+      ranking,
       messages: buildRagMessages({ question, docs }),
     };
   }
 
   async function ask(question, userId = DEFAULT_USER) {
+    const cached = externalJobs ? null : answerCache.get(userId, question);
+    if (cached) return { ...cached, cached: true };
+
     const retrievalStarted = Date.now();
     const prepared = await prepare(question, userId);
     const retrievalMs = Date.now() - retrievalStarted;
-    const { messages, ...result } = prepared;
+    const { messages, ranking, ...answerFields } = prepared;
+    const result = { ...answerFields, reranked: ranking.reranked };
     if (prepared.refused) {
       recordTrace(trace, {
         route: "rag.ask",
@@ -302,8 +366,11 @@ export function createRagService({
         refused: true,
         sources: result.matchedSources,
         dropped: result.droppedSources,
+        ...ranking,
       });
-      return result;
+      const refusedResult = { ...result, cached: false };
+      if (!externalJobs) answerCache.set(userId, question, refusedResult);
+      return refusedResult;
     }
 
     const generationStarted = Date.now();
@@ -312,7 +379,8 @@ export function createRagService({
         typeof llm.complete === "function" ? await llm.complete(messages) : { text: await llm.invoke(messages) };
       const text = typeof completed === "string" ? completed : completed.text;
       const generationMs = Date.now() - generationStarted;
-      const verdict = groundAnswer(text, result.matchedSources);
+      const verdict = groundAnswer(stripFenceMarkup(text), result.matchedSources);
+      const answer = redactOutput(verdict.answer);
       recordTrace(trace, {
         route: "rag.ask",
         userId,
@@ -323,8 +391,11 @@ export function createRagService({
         refused: !verdict.grounded,
         sources: result.matchedSources,
         dropped: result.droppedSources,
+        ...ranking,
       });
-      return { ...result, answer: verdict.answer, refused: !verdict.grounded };
+      const response = { ...result, answer, refused: !verdict.grounded, cached: false };
+      if (!externalJobs) answerCache.set(userId, question, response);
+      return response;
     } catch (err) {
       recordTrace(trace, {
         route: "rag.ask",
@@ -334,6 +405,7 @@ export function createRagService({
         refused: false,
         sources: result.matchedSources,
         dropped: result.droppedSources,
+        ...ranking,
         error: err.message,
       });
       throw err;
@@ -349,6 +421,7 @@ export function createRagService({
         refused: prepared.refused,
         matchedSources: prepared.matchedSources,
         droppedSources: prepared.droppedSources,
+        reranked: prepared.ranking.reranked,
       }),
     );
 
@@ -363,6 +436,7 @@ export function createRagService({
         refused: true,
         sources: prepared.matchedSources,
         dropped: prepared.droppedSources,
+        ...prepared.ranking,
       });
       return;
     }
@@ -382,10 +456,12 @@ export function createRagService({
             write(formatSse("token", { text: token }));
           },
         })) ?? {};
-      const verdict = groundAnswer(parts.join(""), prepared.matchedSources);
+      const raw = parts.join("");
+      const verdict = groundAnswer(stripFenceMarkup(raw), prepared.matchedSources);
+      const answer = redactOutput(verdict.answer);
       refused = !verdict.grounded;
-      if (!verdict.grounded) {
-        write(formatSse("replace", { text: verdict.answer, refused: true }));
+      if (!verdict.grounded || answer !== raw.trim()) {
+        write(formatSse("replace", { text: answer, refused }));
       }
       write(formatSse("done", { finish: verdict.grounded ? "stop" : "ungrounded" }));
     } catch (err) {
@@ -402,6 +478,7 @@ export function createRagService({
         refused,
         sources: prepared.matchedSources,
         dropped: prepared.droppedSources,
+        ...prepared.ranking,
         error,
       });
     }
@@ -411,9 +488,9 @@ export function createRagService({
     const suite = JSON.parse(await fs.readFile(questionsPath, "utf-8"));
     const items = [];
     for (const item of [...suite.answerable, ...suite.unanswerable]) {
-      items.push({ ...item, hits: await retrieve(item.question, userId) });
+      items.push({ ...item, hits: (await retrieveRanked(item.question, userId)).hits });
     }
-    return scoreRetrieval(items, { k: topK, minScore });
+    return { ...scoreRetrieval(items, { k: topK, minScore }), reranked: typeof rerank === "function" };
   }
 
   return {
@@ -429,8 +506,10 @@ export function createRagService({
     ask,
     streamAnswer,
     retrieve,
+    retrieveRanked: async (question, userId) => (await retrieveRanked(question, userId)).hits,
     listChunks,
     evaluate,
+    runQueued: (key) => indexOne(key),
     get chunkCount() {
       return chunkCount;
     },
@@ -439,6 +518,9 @@ export function createRagService({
     },
     get storeKind() {
       return vectorStore.kind;
+    },
+    get reranker() {
+      return typeof rerank === "function" ? "cross-encoder" : "off";
     },
   };
 }

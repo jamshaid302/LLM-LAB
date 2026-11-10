@@ -1,5 +1,6 @@
 import { config } from "../../core/config.js";
 import { HttpError } from "../../core/http.js";
+import { completeOllamaChatResult } from "../../core/ollama-stream.js";
 
 import { buildAllPatterns } from "./prompts.js";
 import { estimateTokens, parseSampling } from "./sampling.js";
@@ -14,6 +15,9 @@ export function createChatRunner({
   fetchImpl = fetch,
   baseUrl = config.ollama.baseUrl,
   model = config.ollama.chatModel,
+  sleep,
+  timeoutMs,
+  retries,
 } = {}) {
   async function run(settings, messages) {
     const options = {
@@ -23,23 +27,17 @@ export function createChatRunner({
     };
     if (settings.seed !== undefined) options.seed = settings.seed;
 
-    let response;
-    try {
-      response = await fetchImpl(`${baseUrl}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ model, messages, stream: false, options }),
-      });
-    } catch (cause) {
-      throw new Error(`Cannot reach Ollama at ${baseUrl} (${cause.message})`);
-    }
-
-    if (!response.ok) {
-      throw new Error(`Ollama chat failed: HTTP ${response.status}`);
-    }
-
-    const data = await response.json();
-    const text = data.message?.content ?? "";
+    const result = await completeOllamaChatResult({
+      fetchImpl,
+      baseUrl,
+      model,
+      messages,
+      options,
+      sleep,
+      timeoutMs,
+      retries,
+    });
+    const text = result.text ?? "";
     const transcript = messages.map((message) => message.content).join("") + text;
 
     return {
@@ -47,11 +45,11 @@ export function createChatRunner({
       model,
       settings,
       tokens: {
-        prompt: data.prompt_eval_count ?? null,
-        completion: data.eval_count ?? null,
+        prompt: result.promptTokens,
+        completion: result.completionTokens,
         estimated: estimateTokens(transcript),
       },
-      durationMs: typeof data.eval_duration === "number" ? Math.round(data.eval_duration / 1e6) : null,
+      durationMs: result.durationMs,
     };
   }
 

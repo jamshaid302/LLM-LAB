@@ -4,3 +4,13 @@ export function fenceUntrusted(text, { source = "unknown", id = 1 } = {}) {
   const label = String(source).replaceAll("&", "&amp;").replaceAll('"', "&quot;").replaceAll("<", "&lt;");
   return `<document source="${label}" id="${id}">\n${body}\n</document>`;
 }
+
+const FENCE_TAG = /<\\?\/?document\b[^>]*>/gi;
+
+/** Small models sometimes copy the fence tags into the reply. The person should not see them. */
+export function stripFenceMarkup(answer) {
+  return String(answer ?? "")
+    .replace(FENCE_TAG, " ")
+    .replace(/[ \t]{2,}/g, " ")
+    .trim();
+}

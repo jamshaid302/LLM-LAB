@@ -20,6 +20,7 @@ export function createRagModule({
         chunks: service.chunkCount,
         minScore: service.minScore,
         store: service.storeKind,
+        reranker: service.reranker,
       };
     },
   };

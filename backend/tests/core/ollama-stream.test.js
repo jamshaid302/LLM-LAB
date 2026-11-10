@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   completeOllamaChat,
@@ -7,11 +7,18 @@ import {
   takeCompleteLines,
   tokenFromOllamaLine,
 } from "../../src/core/ollama-stream.js";
+import { createEmbeddings } from "../../src/core/ollama.js";
 import { consumeSseBuffer, formatSse } from "../../src/core/sse.js";
 
 function ollamaLine(text, done = false) {
   return JSON.stringify({ message: { role: "assistant", content: text }, done });
 }
+
+describe("embeddings", () => {
+  it("retries an embedding once", () => {
+    expect(createEmbeddings().caller.maxRetries).toBe(1);
+  });
+});
 
 describe("takeCompleteLines", () => {
   it("holds back a line that has not finished", () => {
@@ -60,6 +67,65 @@ describe("completeOllamaChat", () => {
       completionTokens: 2,
     });
   });
+
+  it("retries a dropped connection once and does not retry a 400", async () => {
+    const sleep = async () => {};
+    let attempts = 0;
+    const recovered = async () => {
+      attempts += 1;
+      if (attempts === 1) throw new Error("connect ECONNRESET");
+      return { ok: true, json: async () => ({ message: { content: "pong" } }) };
+    };
+
+    await expect(completeOllamaChatResult({ fetchImpl: recovered, messages: [], sleep })).resolves.toMatchObject({
+      text: "pong",
+    });
+    expect(attempts).toBe(2);
+
+    const rejected = vi.fn(async () => ({ ok: false, status: 400, json: async () => ({}) }));
+    await expect(completeOllamaChatResult({ fetchImpl: rejected, messages: [], sleep })).rejects.toThrow(/HTTP 400/);
+    expect(rejected).toHaveBeenCalledTimes(1);
+  });
+
+  it("retries a timeout and keeps a caller abort as a stop", async () => {
+    const sleep = async () => {};
+    let attempts = 0;
+    const recovered = (_url, init) =>
+      new Promise((resolve, reject) => {
+        attempts += 1;
+        if (attempts === 1) {
+          init.signal.addEventListener("abort", () => {
+            reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+          });
+          return;
+        }
+        resolve({ ok: true, json: async () => ({ message: { content: "pong" } }) });
+      });
+
+    await expect(
+      completeOllamaChatResult({ fetchImpl: recovered, messages: [], timeoutMs: 20, sleep }),
+    ).resolves.toMatchObject({ text: "pong" });
+
+    const controller = new AbortController();
+    const stopped = vi.fn(
+      (_url, init) =>
+        new Promise((resolve, reject) => {
+          init.signal.addEventListener("abort", () => {
+            reject(Object.assign(new Error("aborted"), { name: "AbortError" }));
+          });
+        }),
+    );
+    const pending = completeOllamaChatResult({
+      fetchImpl: stopped,
+      messages: [],
+      signal: controller.signal,
+      timeoutMs: 5_000,
+      sleep,
+    });
+    controller.abort();
+    await expect(pending).rejects.toMatchObject({ name: "AbortError" });
+    expect(stopped).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("streamOllamaChat", () => {
@@ -87,6 +153,46 @@ describe("streamOllamaChat", () => {
     controller.abort();
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
     expect(tokens).toEqual(["partial"]);
+  });
+
+  it("retries a 503 before any token and does not retry after one", async () => {
+    const sleep = async () => {};
+    let attempts = 0;
+    const tokens = [];
+    await streamOllamaChat({
+      fetchImpl: async () => {
+        attempts += 1;
+        if (attempts === 1) return { ok: false, status: 503, json: async () => ({}) };
+        return ndjsonResponse([ollamaLine("Hel"), ollamaLine("lo"), ollamaLine("", true)]);
+      },
+      messages: [{ role: "user", content: "hi" }],
+      onToken: (token) => tokens.push(token),
+      sleep,
+    });
+    expect(tokens).toEqual(["Hel", "lo"]);
+    expect(attempts).toBe(2);
+
+    let pushed = false;
+    const broken = new ReadableStream({
+      pull(controller) {
+        if (!pushed) {
+          pushed = true;
+          controller.enqueue(new TextEncoder().encode(`${ollamaLine("Hel")}\n`));
+          return;
+        }
+        controller.error(new Error("reset"));
+      },
+    });
+    const once = vi.fn(async () => ({ ok: true, body: broken }));
+    await expect(
+      streamOllamaChat({
+        fetchImpl: once,
+        messages: [{ role: "user", content: "hi" }],
+        onToken: async () => {},
+        sleep,
+      }),
+    ).rejects.toThrow(/reset/);
+    expect(once).toHaveBeenCalledTimes(1);
   });
 });
 

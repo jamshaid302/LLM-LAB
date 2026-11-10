@@ -5,6 +5,7 @@ import {
   createChromaStore,
   createMemoryStore,
   createVectorStore,
+  ownerWhere,
   similarityFromCosineDistance,
 } from "../../../src/modules/rag/store.js";
 
@@ -42,8 +43,9 @@ function fakeChroma() {
       async modify({ metadata }) {
         collection.metadata = { ...collection.metadata, ...metadata };
       },
-      async query({ nResults }) {
-        const slice = records.slice(0, nResults);
+      async query({ nResults, where }) {
+        const allowed = records.filter((record) => matchesOwner(record.metadata?.owner, where));
+        const slice = allowed.slice(0, nResults);
         return {
           documents: [slice.map((record) => record.document)],
           metadatas: [slice.map((record) => record.metadata)],
@@ -176,5 +178,43 @@ describe("createChromaStore", () => {
     expect(hits).toEqual([
       { text: "gym only", score: similarityFromCosineDistance(0.226), source: "knowledge.txt", owner: "shared" },
     ]);
+  });
+});
+
+function matchesOwner(owner, where) {
+  if (!where?.$or) return true;
+  return where.$or.some((clause) => owner === clause.owner);
+}
+
+describe("per-person chunks", () => {
+  it("hides one account's chunk from another account", async () => {
+    const store = createMemoryStore(embeddings);
+    await store.replace(
+      [
+        { pageContent: "shared gym", metadata: { source: "knowledge.txt", owner: "shared" } },
+        { pageContent: "sam maple", metadata: { source: "note.md", owner: "sam" } },
+      ],
+      { corpusHash: "owners" },
+    );
+
+    const local = await store.search("maple", 3, "local");
+    expect(local.map((hit) => hit.owner)).toEqual(["shared"]);
+    const sam = await store.search("maple", 3, "sam");
+    expect(sam.map((hit) => hit.text).sort()).toEqual(["sam maple", "shared gym"]);
+  });
+
+  it("asks Chroma for shared chunks plus that person's chunks", async () => {
+    expect(ownerWhere("sam")).toEqual({ $or: [{ owner: "shared" }, { owner: "sam" }] });
+    const client = fakeChroma();
+    const store = createChromaStore({ embeddings, url: "http://localhost:8000", client });
+    await store.replace(
+      [
+        { pageContent: "shared gym", metadata: { source: "knowledge.txt", owner: "shared" } },
+        { pageContent: "sam maple", metadata: { source: "note.md", owner: "sam" } },
+      ],
+      { corpusHash: "owners" },
+    );
+    const hits = await store.search("maple", 3, "local");
+    expect(hits.map((hit) => hit.text)).toEqual(["shared gym"]);
   });
 });

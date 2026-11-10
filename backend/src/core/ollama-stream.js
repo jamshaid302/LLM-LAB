@@ -1,4 +1,5 @@
 import { config } from "./config.js";
+import { failureFromFetch, isRetryableStatus, openAttemptSignal, retryOllama } from "./ollama-retry.js";
 
 /** Keep leftover characters that are not yet a full NDJSON line. */
 export function takeCompleteLines(buffer) {
@@ -30,38 +31,65 @@ export async function completeOllamaChatResult({
   tools,
   signal,
   options,
+  timeoutMs = config.ollama.timeoutMs,
+  retries = 1,
+  sleep,
 } = {}) {
-  let response;
-  try {
-    response = await fetchImpl(`${baseUrl}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+  return retryOllama(
+    () =>
+      chatOnce({
+        fetchImpl,
+        baseUrl,
         model,
         messages,
-        stream: false,
-        ...(tools?.length ? { tools } : {}),
-        ...(options ? { options } : {}),
+        tools,
+        signal,
+        options,
+        timeoutMs,
       }),
-      signal,
-    });
-  } catch (cause) {
-    if (cause?.name === "AbortError") throw cause;
-    throw new Error(`Cannot reach Ollama at ${baseUrl} (${cause.message})`);
-  }
+    { retries, sleep },
+  );
+}
 
-  if (!response.ok) {
-    throw new Error(`Ollama chat failed: HTTP ${response.status}`);
-  }
+async function chatOnce({ fetchImpl, baseUrl, model, messages, tools, signal, options, timeoutMs }) {
+  const attempt = openAttemptSignal(signal, timeoutMs);
+  try {
+    let response;
+    try {
+      response = await fetchImpl(`${baseUrl}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          model,
+          messages,
+          stream: false,
+          ...(tools?.length ? { tools } : {}),
+          ...(options ? { options } : {}),
+        }),
+        signal: attempt.signal,
+      });
+    } catch (cause) {
+      throw failureFromFetch(cause, { caller: signal, attempt, timeoutMs, baseUrl });
+    }
 
-  const data = await response.json();
-  const toolCalls = data.message?.tool_calls;
-  return {
-    text: data.message?.content ?? "",
-    toolCalls: Array.isArray(toolCalls) ? toolCalls : [],
-    promptTokens: countOrNull(data.prompt_eval_count),
-    completionTokens: countOrNull(data.eval_count),
-  };
+    if (!response.ok) {
+      throw Object.assign(new Error(`Ollama chat failed: HTTP ${response.status}`), {
+        retryable: isRetryableStatus(response.status),
+      });
+    }
+
+    const data = await response.json();
+    const toolCalls = data.message?.tool_calls;
+    return {
+      text: data.message?.content ?? "",
+      toolCalls: Array.isArray(toolCalls) ? toolCalls : [],
+      promptTokens: countOrNull(data.prompt_eval_count),
+      completionTokens: countOrNull(data.eval_count),
+      durationMs: typeof data.eval_duration === "number" ? Math.round(data.eval_duration / 1e6) : null,
+    };
+  } finally {
+    attempt.clear();
+  }
 }
 
 /** One non-streaming reply. Used for the conversation summary, which is itself a model call. */
@@ -85,49 +113,87 @@ export async function streamOllamaChat({
   messages,
   signal,
   onToken,
+  timeoutMs = config.ollama.timeoutMs,
+  retries = 1,
+  sleep,
 } = {}) {
-  let response;
+  return retryOllama(
+    () => streamOnce({ fetchImpl, baseUrl, model, messages, signal, onToken, timeoutMs }),
+    { retries, sleep },
+  );
+}
+
+async function streamOnce({ fetchImpl, baseUrl, model, messages, signal, onToken, timeoutMs }) {
+  const attempt = openAttemptSignal(signal, timeoutMs);
+  let sent = false;
   try {
-    response = await fetchImpl(`${baseUrl}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ model, messages, stream: true }),
-      signal,
-    });
+    let response;
+    try {
+      response = await fetchImpl(`${baseUrl}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ model, messages, stream: true }),
+        signal: attempt.signal,
+      });
+    } catch (cause) {
+      throw failureFromFetch(cause, { caller: signal, attempt, timeoutMs, baseUrl });
+    }
+
+    if (!response.ok) {
+      throw Object.assign(new Error(`Ollama chat failed: HTTP ${response.status}`), {
+        retryable: isRetryableStatus(response.status),
+      });
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    let promptTokens = null;
+    let completionTokens = null;
+
+    while (true) {
+      if (signal?.aborted) {
+        throw Object.assign(new Error("The reply was stopped"), { name: "AbortError" });
+      }
+      if (attempt.timedOut()) {
+        throw Object.assign(new Error(`Ollama timed out after ${timeoutMs}ms`), { retryable: !sent });
+      }
+
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      buffer += decoder.decode(value, { stream: true });
+      const split = takeCompleteLines(buffer);
+      buffer = split.rest;
+
+      for (const line of split.lines) {
+        const parsed = tokenFromOllamaLine(line);
+        if (parsed.token) {
+          sent = true;
+          await onToken(parsed.token);
+        }
+        if (parsed.promptTokens != null) promptTokens = parsed.promptTokens;
+        if (parsed.completionTokens != null) completionTokens = parsed.completionTokens;
+        if (parsed.done) return { promptTokens, completionTokens };
+      }
+    }
+
+    return { promptTokens, completionTokens };
   } catch (cause) {
-    if (cause?.name === "AbortError") throw cause;
-    throw new Error(`Cannot reach Ollama at ${baseUrl} (${cause.message})`);
-  }
-
-  if (!response.ok) {
-    throw new Error(`Ollama chat failed: HTTP ${response.status}`);
-  }
-
-  const reader = response.body.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  let promptTokens = null;
-  let completionTokens = null;
-
-  while (true) {
     if (signal?.aborted) {
+      if (cause?.name === "AbortError") throw cause;
       throw Object.assign(new Error("The reply was stopped"), { name: "AbortError" });
     }
-    const { done, value } = await reader.read();
-    if (done) break;
-
-    buffer += decoder.decode(value, { stream: true });
-    const split = takeCompleteLines(buffer);
-    buffer = split.rest;
-
-    for (const line of split.lines) {
-      const parsed = tokenFromOllamaLine(line);
-      if (parsed.token) await onToken(parsed.token);
-      if (parsed.promptTokens != null) promptTokens = parsed.promptTokens;
-      if (parsed.completionTokens != null) completionTokens = parsed.completionTokens;
-      if (parsed.done) return { promptTokens, completionTokens };
+    if (cause?.retryable !== undefined) throw cause;
+    if (sent) {
+      if (attempt.timedOut() || cause?.name === "AbortError" || cause?.name === "TimeoutError") {
+        throw Object.assign(new Error(`Ollama timed out after ${timeoutMs}ms`), { retryable: false });
+      }
+      cause.retryable = false;
+      throw cause;
     }
+    throw failureFromFetch(cause, { caller: signal, attempt, timeoutMs, baseUrl });
+  } finally {
+    attempt.clear();
   }
-
-  return { promptTokens, completionTokens };
 }

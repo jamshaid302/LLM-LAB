@@ -1,5 +1,10 @@
 # Chroma stores document embeddings. MongoDB stores chat threads and messages.
 # From backend/: docker compose up -d
+# That starts Chroma and Mongo only.
+#   docker compose --profile api up -d --build
+#   docker compose --profile api --profile web up -d --build
+# The web profile serves the frontend on port 8080 and proxies /api to the api service.
+# Stop the host API first so port 5001 is free. Ollama stays on the host.
 
 services:
   chroma:
@@ -21,6 +26,38 @@ services:
     volumes:
       - mongo-data:/data/db
 
+  api:
+    profiles: ["api"]
+    build: .
+    ports:
+      - "5001:5001"
+    environment:
+      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      CHAT_MODEL: ${CHAT_MODEL:-qwen2.5:7b}
+      AGENT_MODEL: ${AGENT_MODEL:-qwen2.5:7b}
+      EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
+      RAG_STORE: chroma
+      CHROMA_URL: http://chroma:8000
+      MONGO_URL: mongodb://mongo:27017/lab
+      API_PORT: "5001"
+      RAG_RERANK: ${RAG_RERANK:-cross-encoder}
+    volumes:
+      - model-cache:/app/.cache
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    depends_on:
+      - chroma
+      - mongo
+
+  web:
+    profiles: ["web"]
+    build: ../frontend
+    ports:
+      - "8080:80"
+    depends_on:
+      - api
+
 volumes:
   chroma-data:
   mongo-data:
+  model-cache:

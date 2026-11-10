@@ -1,5 +1,7 @@
 import { HttpError } from "../../core/http.js";
 
+import { organizeHits } from "./organize.js";
+
 const MAX_QUERY = 4000;
 
 /**
@@ -15,11 +17,15 @@ export function createSemanticSearchService({ search, minScore }) {
     }
 
     const { matched = [], dropped = [] } = await search(question, userId);
+    const organized = organizeHits(matched.map(present), dropped.map(present));
     return {
       query: question,
       minScore,
-      matched: matched.map(present),
+      matched: organized.matched,
       dropped: dropped.map(present),
+      duplicates: organized.duplicates,
+      clusters: organized.clusters,
+      related: organized.related,
     };
   }
 

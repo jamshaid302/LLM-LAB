@@ -25,6 +25,10 @@ your code. It is continuing a pattern. That is why it can write fluent nonsense:
 and true are different jobs. Everything else — prompts, RAG, tools, fine-tuning — is a
 way of steering that next-token prediction.
 
+### What is an RAG?
+
+The primary purpose of Retrieval-Augmented Generation (RAG) is to connect large language models (LLMs) to external, private, or real-time data sources so they can generate accurate, grounded, and up-to-date responses without requiring expensive model retraining.
+
 ### When do you use prompting, RAG, or fine-tuning?
 
 Prompting when the model already knows how to do the task and you need a format or a
@@ -103,15 +107,15 @@ is still in the code and tests still use it. `RAG_STORE=memory` switches back to
 Chroma stores cosine distance, so the app converts that to similarity before the 0.5
 cutoff. After the swap, recall@3 was still 1.0 and the gym chunk still scored 0.774.
 Restarting the API, and restarting the Chroma container, both load the chunks without
-embedding them again when the folder hash matches. The folder is `knowledge.txt` and
-`office.txt`, seven chunks. Each chunk is labeled with the file it came from, so the
-wifi password cites `office.txt` and the gym cites `knowledge.txt`.
+embedding them again when the folder hash matches. The shared folder is now 9 files and
+101 chunks. The owner filter was also tested against a real Chroma, not only a fake:
+another person's nearest chunk never takes a top-k slot. Each chunk is labeled with the file it came from, so the
+wifi password cites `office.txt` and the gym cites `knowledge.txt`. An exact repeat of a question for the same person is answered from a ten-minute cache and that cache is cleared when a document changes. Emails, phone numbers, card numbers, and API keys in the reply are labeled. `lantern-42` and `4829` stay.
 
 ### What is still missing?
 
-Citations are not checked against the chunk text. The loader reads `.txt`, `.md`, and
-the text layer of a `.pdf`. Upload embedding runs in this process; a queue that lives
-in another process is still unbuilt.
+Citations are checked for names and codes, and a citation-only reply is replaced. The loader reads `.txt`, `.md`, and
+the text layer of a `.pdf`. Upload embedding runs in this process by default. Set `EMBED_WORKER=external` and run `npm run worker` to claim those jobs from MongoDB instead. Do not run both consumers.
 
 ### Where does RAG show up in a MERN product?
 
@@ -252,19 +256,36 @@ memory, so a restart clears it. Other pages do not all write this log yet.
 ### What is hybrid search?
 
 In this project a comparison runs BM25 and the vector search, then merges the lists
-with reciprocal rank fusion. On 29 October 2026, with `nomic-embed-text` and the
-current docs, both retrievers had recall@3 of 1 and MRR of 1. The right chunk was
-already rank 1 for every answerable question, including the server-room code and
-`lantern-42`. Brazil stayed under the 0.5 cutoff. "Who is the CEO?" stayed above it.
-Hybrid was not adopted. RAG and Semantic Search still use vector search.
+with reciprocal rank fusion (each list adds 1 / (60 + rank)). On the first 13-question
+set both retrievers scored a perfect 1, which taught me the set was too easy to tell
+anything apart. On the 57-question set (49 answerable, 8 of them needing two facts from
+different files) hybrid raised recall@3 from 0.959 to 0.98 by recovering one of the two
+two-fact questions vector search missed ("server room code and IT extension"). It was
+better, but not the best.
 
 ### What is reranking?
 
-The way I would build it is a second, slower model that rescores a wider first list,
-about 20 chunks, and keeps the best 3. I would pay latency for a better order, and I
-would keep it only if recall or MRR on the question file went up. Reranking a bad
-first search cannot find a chunk that never came back. That rescoring model is not
-built.
+Vector search is a bi-encoder: the question and each chunk are embedded separately and
+compared. That is fast, but the model never sees them together. A cross-encoder reads the
+question and the chunk in one pass and outputs a relevance score. It is more accurate and
+too slow to run on every chunk, so the usual design is retrieve wide, rerank narrow.
+
+In this project I retrieve the nearest 20 and rescore them with
+`ms-marco-MiniLM-L-6-v2`, running locally on the CPU through `onnxruntime-web`. On the
+same 57 questions it took recall@3 from 0.959 to 1.0 and MRR from 0.884 to 0.915, so it is
+now the retriever for RAG, Conversations, and Agents. I also built a cheap overlap
+reranker, which sorts by shared words, and it made things worse: 0.898 recall. That is the
+point I would make in an interview. "Add a reranker" is a hypothesis, and the
+measurement decides. Two details matter. The cutoff still uses the cosine score, because
+cross-encoder logits have no fixed scale. And if the model fails to load, retrieval falls
+back to vector order and the trace records why. Cost: about 1 to 1.5 seconds per question
+on this CPU, plus a 23 MB model downloaded once.
+
+### Why not just send the whole file (parent-document retrieval)?
+
+I measured that too. It had the best MRR (0.959) because a whole file contains every
+fact in it, but it multiplies the prompt size and gives a small model more text to
+confuse. Recall was 0.98, below the cross-encoder, so I did not adopt it.
 
 ### What is query rewriting?
 
@@ -283,10 +304,7 @@ In this project the Semantic Search page embeds the query and returns the neares
 chunks, each with a score and a file name. The chat model is not called. RAG uses that
 same search as context for a generated answer. The cutoff is shared, so a weak neighbor
 is listed as dropped on the search page and is withheld from the model on the RAG page.
-Who is asking limits both to the shared samples plus that person's files.
-
-Deduplication, clustering, and recommendations are the same embedding idea. They are
-not built.
+The signed-in account limits both to the shared samples plus that person's files. Local and Guest see the same shared chunks and do not see each other's uploads. A repeated chunk is set aside, kept chunks are counted by file, and the first three dropped chunks are the nearest misses.
 
 ---
 
@@ -304,16 +322,12 @@ job can be retried without sending the file again. Chunks keep the uploaded name
 Remove waits until an in-flight embed of that file finishes, then deletes the file and
 drops its chunks together. `knowledge.txt` and `office.txt` cannot be removed. A
 folder path and an empty file are rejected. The Document Pipeline page lists those
-same jobs for the person selected in **Who is asking**. The RAG page still uploads
-through its own route, and both routes share the one in-process queue.
+same jobs for the signed-in account. Local and Guest have the same powers, and each one only sees the shared samples plus their own files. The RAG page still uploads
+through its own route, and both routes share the one in-process queue. With `EMBED_WORKER=external`, the API writes the job to MongoDB and `npm run worker` embeds it. The default is the in-process queue, so `npm run dev` still embeds uploads.
 
 ### How would you run that job outside the API process?
 
-The way I would build it is a durable queue and a separate worker. The API would only
-store the file and enqueue an id. The worker would survive an API restart, retry with
-backoff, and report progress that more than one server can read. In this project the
-queue is memory inside the API. A restart drops it. The saved file changes the folder
-hash, so startup embeds the folder again. That separate worker is not built.
+In this project the external mode stores the job id in MongoDB. The worker process claims a queued job, embeds that file, and marks it ready or failed. A failed job can be queued again. The default queue is still memory inside the API, and a restart drops those in-process jobs. The saved file changes the folder hash, so startup embeds the folder again. Run one consumer: the API worker or `npm run worker`, not both.
 
 ---
 
@@ -350,9 +364,7 @@ into the same Chroma collection as the knowledge base would let an old reply com
 with the gym chunk. The last 12 messages are sent in full. Older ones are summarized
 into one paragraph, and that paragraph is what later prompts see for the early turns.
 The summary is its own model call, so it costs tokens, and it can drop a detail. The
-original messages stay in MongoDB. The header **Who is asking** is Local or Guest.
-A thread belongs to that person, and the other person's list does not include it.
-There is no password.
+original messages stay in MongoDB. Log in with an account. Local and Guest start as `local` and `guest`. A thread belongs to that account, and another account's list does not include it.
 
 ---
 
@@ -360,11 +372,39 @@ There is no password.
 
 ### How do you evaluate a RAG system?
 
-In this project the LLM Evaluation page scores the saved question set. Recall@k is
-whether the expected phrase was in the top k. MRR is whether it was near the top. The
-cutoff's effect is the same pair of numbers after scores under 0.5 are removed. On
-29 October 2026 that run was recall@3 of 1, MRR of 1, and 1 of 2 unanswerable questions
-refused. The chat model is not called. An LLM judge and a CI gate are not built.
+In two layers, because a RAG answer can fail in two places.
+
+**Retrieval.** A golden set of 57 questions over 9 files: 49 with a known answer and 8
+the documents cannot answer. 8 of the answerable ones need two facts from different
+chunks, because single-fact questions alone hide the cases where top-k is too small.
+Recall@k asks whether the chunk with the answer was in the top k; for a two-fact
+question, both must be. MRR asks how high it ranked. Both are measured before and after
+the cutoff. With the cross-encoder: recall@3 1.0, MRR 0.915, and the cutoff alone
+refuses 2 of the 8 unanswerable questions.
+
+**Answers.** `npm run eval:answers` sends every question through the real pipeline and
+grades each answer twice: by the human label (the fact must appear in the answer) and by
+an LLM judge (a second call answers yes or no). The labels are strict and miss
+paraphrases. The judge reads meaning, but it is a model, so I record how often the two
+agree before I trust the judge anywhere there is no label. Unanswerable questions pass
+only on a refusal, and the run records whether the cutoff refused them or the model and
+grounding check did.
+
+**Regression.** CI has no Ollama, so it cannot rerun the models. The measured numbers
+are committed in `baseline.json`, and a unit test fails if they fall under floors: recall
+0.95, MRR 0.85, and for qwen2.5:7b a label-correct rate of 0.9 and at least 7 of 8
+unanswerable questions refused. Anyone who changes retrieval or prompts has to rerun the
+scripts and commit numbers that still pass.
+
+The saved qwen2.5:7b run: 49 of 49 correct by label, 48 of 49 by the judge, no false
+refusals, and all 8 unanswerable questions refused, 6 of them after the cutoff let them
+through. The one judge "no" was a correct answer with a one-word label ("together"). The
+judge could not check a fact that vague, which is a lesson about writing labels.
+
+**What the first full answer run caught.** Two correct answers were being refused. The
+grounding check read the citation `[1]` as the number 1, and when the chunk had no "1" in
+it, the answer was called unsupported. The unit tests never had a citation next to a
+chunk without that digit. The question set did.
 
 ---
 
@@ -377,7 +417,11 @@ pipeline. If no chunk clears the cutoff, the verdict is that the search missed a
 model is not called. If the model answers with only a citation, or with a name or code
 that is not in the kept chunks, the answer is replaced with "I don't know" and the
 verdict is `replaced`. The source line stays. A name the file itself states is kept, and
-the verdict is `grounded`. The check looks for names and codes. It is not a second model.
+the verdict is `grounded`. The check looks for names and codes, and ignores citation markers like `[1]`. Judge is the second step on the same page, and it only runs for a question that already has a human label; for a two-fact question the answer must contain both. Emails, phone numbers, ID numbers, card numbers, and API keys in a reply are masked. `lantern-42` stays.
+
+A small model added one more failure: `llama3.2:1b` sometimes copied the `<document>`
+fence tags from the prompt into its answer. Those tags are now stripped before the
+grounding check, and the stream sends a replace event so the page shows the clean text.
 
 ---
 
@@ -387,8 +431,7 @@ the verdict is `grounded`. The check looks for names and codes. It is not a seco
 
 In this project the AI Agents page gives the model one function, `search_documents`,
 with a `query` string. The model returns the name and the arguments. The API runs the
-same retrieval as Semantic Search, including the 0.5 cutoff and the person selected in
-Who is asking. The model does not read the files itself. The tool result is fenced in a
+same retrieval as Semantic Search, including the 0.5 cutoff and the signed-in account. Local and Guest do not see each other's files. The model does not read the files itself. The tool result is fenced in a
 `<document>` tag, and the system message says that text is data.
 
 ### What is a ReAct loop, and how do you bound it?
@@ -437,19 +480,23 @@ reply was `[1]`. The RAG page now replaces a citation-only reply, and a name the
 chunks do not contain, with "I don't know". Checked the same day, that Alice file
 still scored 0.734 and the reply was replaced with "I don't know". The source line
 stayed. If the model says Alice, that reply is kept, because the file contains the
-name. The header switch stores a new upload under that person. A question searches
-the shared samples plus that person's files, so the other person does not receive
-that chunk. Passwords and a real session are not built.
+name. Upload stores a new file under the signed-in account, in `docs/users/<id>/`. A question searches
+the shared samples plus that person's files, in memory and in Chroma, so another account does not receive
+that chunk. Local and Guest are seeded accounts. Register adds another. A request without the session cookie is rejected, a change without the security token is rejected, and the cookie wins over a spoofed user header. Logout deletes the session id.
 
 ---
 
-## Planned — security
+## Built — rate limit
 
-### What else do you lock down?
+### How do you stop a client from calling the model in a loop?
 
-The way I would build it is auth on every route, including re-ingest. A body size
-limit. A rate limit. Do not log full prompts if they contain customer data. Strip
-secrets from tool output before it goes back to the model. That is not built.
+In this project ask, stream, and upload share one count: 20 requests per 60 seconds.
+Each signed-in account has its own count. Without a session, Local and Guest are separate and any other header shares one count. The next request is HTTP 429 with `Retry-After`.
+Failed logins stop after 8 tries in a minute from the same address.
+List, delete, retry, and re-ingest are not counted. The counts are in memory, and a
+restart clears them. Logout deletes the session, so the old cookie cannot be reused. A password change does the same. Emails, phone numbers, card numbers, and API keys in a reply are replaced with a label. A short code such as `lantern-42` is not.
+
+Stripping a secret out of the tool result before the model reads it is not built. The visitor wifi code has to remain in that result.
 
 ---
 
@@ -460,22 +507,24 @@ secrets from tool output before it goes back to the model. That is not built.
 In this project each RAG ask, RAG stream, Streaming Chat message, and Conversations
 reply writes one trace: the route, the person, retrieval time, generation time, prompt
 tokens, completion tokens, and the file name and score of each kept or dropped chunk.
-The question is not stored. The list is the newest 50 traces, in memory. A card that
+The question is not stored. The list is the newest 50 traces. On startup those rows are loaded from MongoDB when it is reachable, and each new trace is written there. If MongoDB is down, the list stays in memory and a restart clears it. A card that
 says the search missed had no kept chunk and did not call the model. A card with kept
 chunks and a replaced answer means the model wrote something the grounding check would
-not keep. A restart clears the list. A durable log is not built.
+not keep.
 
 ---
 
-## Planned — deployment
+## Built — deployment
 
 ### How do you ship this?
 
-The API and the web app are containers. The vector database is a service with a volume.
-Ollama or the hosted provider is configured by env, not by a hardcoded URL. CI runs the
-unit tests and the golden-set eval. If the provider is down, the route returns a clear
-error and the rest of the MERN app still works. The model call is a dependency, like a
-payment API, and it gets the same treatment: timeout, retry once, then fail.
+In this project the API is a Node 22 image, `backend/Dockerfile`. Chroma and Mongo
+are already Compose services with volumes. `docker compose up -d` starts those two.
+`docker compose --profile api up -d --build` adds the API. `docker compose --profile api --profile web up -d --build` also starts the frontend image on port 8080, and nginx proxies `/api` to the API. Ollama stays on the host,
+and the container is pointed at it with `OLLAMA_BASE_URL`. The workflow
+`.github/workflows/test.yml` runs the backend unit tests and builds both images.
+A chat call waits up to 120 seconds. A connection failure, a timeout, or HTTP 429
+or 5xx is tried once more. A stop from the caller is not tried again. The tests fail if the committed baseline drops below recall 1 or MRR 1. They do not rescore retrieval.
 
 ---
 
@@ -535,3 +584,15 @@ go into the next prompt along with any matching knowledge-base chunk. When the t
 grows past that window, the older turns are summarized and the summary is what the
 model sees for them. A separate page runs the same chat call against either local model
 and records the tokens, the latency, and a $0 price."
+
+The measurement story, if they ask what you would do to make it production-grade:
+
+"My first question set had 13 questions and everything scored a perfect 1, which meant
+the set could not tell retrievers apart. I grew it to 57 over 9 files, including
+two-fact questions and questions that sound answerable but are not. Plain vector search
+dropped to 0.96 recall. I tried four fixes on the same set. Word-overlap reranking made
+it worse. A local cross-encoder reached 1.0, so it became the default. Then I ran every
+answer through the real pipeline and graded it by label and by an LLM judge. That run
+found a bug the unit tests had missed: the grounding check read the citation [1] as a
+number and refused correct answers. Finally I ran the Mongo and Chroma code against real
+containers in CI, because fakes had been standing in for them."

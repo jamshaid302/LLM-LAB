@@ -60,6 +60,17 @@ describe("evaluation and hallucination routes", () => {
     expect(kept.body.answer).toContain("3rd floor");
   });
 
+  it("serves the saved baseline without calling a model, and 404s when none is wired", async () => {
+    const saved = { recallAtK: { after: 1 }, answers: { "qwen2.5:7b": { labelCorrect: 0.9 } } };
+    const withBaseline = createApp([createEvaluationModule({ run: async () => ({}), loadBaseline: async () => saved })]);
+    const res = await request(withBaseline).get("/api/evaluation/baseline");
+    expect(res.status).toBe(200);
+    expect(res.body.answers["qwen2.5:7b"].labelCorrect).toBe(0.9);
+
+    const missing = await request(app()).get("/api/evaluation/baseline");
+    expect(missing.status).toBe(404);
+  });
+
   it("rejects a blank question and an unknown user", async () => {
     const blank = await request(app()).post("/api/hallucination/check").send({ question: "  " });
     expect(blank.status).toBe(400);

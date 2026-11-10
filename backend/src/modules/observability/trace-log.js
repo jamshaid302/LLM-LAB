@@ -12,6 +12,9 @@ export function createTraceLog() {
         route: record.route,
         userId: record.userId ?? null,
         retrievalMs: record.retrievalMs ?? null,
+        reranked: record.reranked ?? null,
+        rerankMs: record.rerankMs ?? null,
+        rerankError: record.rerankError ?? null,
         generationMs: record.generationMs ?? null,
         promptTokens: record.promptTokens ?? null,
         completionTokens: record.completionTokens ?? null,
@@ -31,6 +34,12 @@ export function createTraceLog() {
         sources: trace.sources.map((hit) => ({ ...hit })),
         dropped: trace.dropped.map((hit) => ({ ...hit })),
       }));
+    },
+    restore(rows) {
+      traces.length = 0;
+      for (const row of rows.slice(0, MAX_TRACES)) traces.push(row);
+      const used = traces.map((row) => Number(String(row.id ?? "").replace("trace-", ""))).filter((value) => Number.isInteger(value));
+      next = Math.max(traces.length, ...used, 0) + 1;
     },
   };
 }

@@ -1,5 +1,7 @@
 import { useState } from "react";
 
+import { userHeaders } from "../../lib/user.js";
+
 const DEFAULT_PROMPT = "Invent a one-sentence tagline for a neighborhood coffee shop.";
 
 const DEFAULT_TASK =
@@ -30,7 +32,7 @@ export default function FundamentalsPage() {
     try {
       const res = await fetch("/api/fundamentals/complete", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: userHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({
           prompt,
           system,
@@ -62,7 +64,7 @@ export default function FundamentalsPage() {
     try {
       const res = await fetch("/api/fundamentals/patterns", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: userHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ task, ...samplingBody() }),
       });
       const data = await res.json();
@@ -81,7 +83,7 @@ export default function FundamentalsPage() {
     try {
       const res = await fetch("/api/fundamentals/structured", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: userHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ task, ...samplingBody(), temperature: 0 }),
       });
       const data = await res.json();

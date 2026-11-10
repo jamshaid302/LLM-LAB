@@ -489,3 +489,70 @@ function pdfWithText(message) {
   const trailer = `trailer\n<< /Size ${objects.length + 1} /Root 1 0 R >>\nstartxref\n${xrefStart}\n%%EOF\n`;
   return Buffer.from(body + xref + trailer);
 }
+
+describe("reranker in the ask path", () => {
+  const ollamaFirst = async (_question, hits) =>
+    [...hits].sort((a, b) => Number(b.text.includes("Ollama")) - Number(a.text.includes("Ollama")));
+
+  it("rescores the wide candidate list, keeps top K, and says it reranked", async () => {
+    const rerank = vi.fn(ollamaFirst);
+    const records = [];
+    const rag = makeService({
+      topK: 1,
+      minScore: 0,
+      rerank,
+      rerankCandidates: 5,
+      trace: (row) => records.push(row),
+    });
+    await rag.ingest();
+
+    const result = await rag.ask("gym");
+    expect(rerank).toHaveBeenCalledTimes(1);
+    expect(rerank.mock.calls[0][1]).toHaveLength(5);
+    expect(result.matchedSources).toHaveLength(1);
+    expect(result.matchedSources[0].text).toContain("Ollama");
+    expect(result.reranked).toBe(true);
+    expect(records[0]).toMatchObject({ reranked: true, rerankError: null });
+    expect(typeof records[0].rerankMs).toBe("number");
+  });
+
+  it("falls back to vector order when the reranker fails, and records why", async () => {
+    const records = [];
+    const rag = makeService({
+      topK: 1,
+      minScore: 0,
+      rerank: async () => {
+        throw new Error("model download failed");
+      },
+      trace: (row) => records.push(row),
+    });
+    await rag.ingest();
+
+    const result = await rag.ask("gym");
+    expect(result.matchedSources[0].text.toLowerCase()).toContain("gym");
+    expect(result.reranked).toBe(false);
+    expect(records[0]).toMatchObject({ reranked: false, rerankError: "model download failed" });
+  });
+
+  it("scores the question set through the same reranked retriever", async () => {
+    const rag = makeService({ rerank: ollamaFirst });
+    await rag.ingest();
+    expect((await rag.evaluate()).reranked).toBe(true);
+    expect(rag.reranker).toBe("cross-encoder");
+    expect(makeService().reranker).toBe("off");
+  });
+
+  it("does not show fence tags a model copied into the answer", async () => {
+    const rag = makeService({
+      llm: {
+        complete: async () => ({
+          text: '<document source="knowledge.txt" id="1"> The company gym is located on the 3rd floor </document> [1]',
+        }),
+      },
+    });
+    await rag.ingest();
+    const result = await rag.ask("Where is the gym?");
+    expect(result.answer).toBe("The company gym is located on the 3rd floor [1]");
+    expect(result.refused).toBe(false);
+  });
+});

@@ -23,6 +23,14 @@ export function createApp(modules) {
   });
 
   for (const module of modules) {
+    if (typeof module.auth === "function") app.use(module.auth);
+  }
+
+  for (const module of modules) {
+    if (typeof module.guard === "function") app.use(module.guard);
+  }
+
+  for (const module of modules) {
     app.use(`/api/${module.id}`, module.router);
   }
 

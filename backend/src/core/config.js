@@ -44,6 +44,8 @@ export const config = {
     // Tool calling is a separate model. A 1b chat model is a weak tool caller.
     agentModel: readString("AGENT_MODEL", "qwen2.5:7b"),
     embedModel: readString("EMBED_MODEL", "nomic-embed-text"),
+    // One chat call. A 7b reply on this machine is well under this.
+    timeoutMs: readInt("OLLAMA_TIMEOUT_MS", 120_000),
   },
   rag: {
     topK: readInt("RAG_TOP_K", 3),
@@ -53,6 +55,14 @@ export const config = {
     // memory keeps the original in-process store. chroma persists across restarts.
     store: readString("RAG_STORE", "memory"),
     chromaUrl: readString("CHROMA_URL", "http://localhost:8000"),
+  },
+  rerank: {
+    // cross-encoder rescores a wider candidate list, then keeps top K. off keeps vector order.
+    // It is the default because it raised recall and MRR on eval/questions.json (see baseline.json).
+    mode: readString("RAG_RERANK", "cross-encoder"),
+    model: readString("RERANK_MODEL", "Xenova/ms-marco-MiniLM-L-6-v2"),
+    candidates: readInt("RERANK_CANDIDATES", 20),
+    cacheDir: readString("RERANK_CACHE_DIR", ""),
   },
   mongo: {
     url: readString("MONGO_URL", "mongodb://127.0.0.1:27018/lab"),
@@ -64,6 +74,24 @@ export const config = {
   },
   ports: {
     api: readInt("API_PORT", 5001),
+  },
+  rateLimit: {
+    max: readInt("RATE_LIMIT_MAX", 20),
+    windowMs: readInt("RATE_LIMIT_WINDOW_MS", 60_000),
+  },
+  auth: {
+    secret: readString("LAB_SESSION_SECRET", "lab-dev-session"),
+    ttlMs: readInt("LAB_SESSION_TTL_MS", 12 * 60 * 60 * 1000),
+    passwords: {
+      local: readString("LAB_LOCAL_PASSWORD", "local"),
+      guest: readString("LAB_GUEST_PASSWORD", "guest"),
+    },
+    loginMax: readInt("LAB_LOGIN_MAX", 8),
+    loginWindowMs: readInt("LAB_LOGIN_WINDOW_MS", 60_000),
+  },
+  embed: {
+    // inprocess embeds in the API. external leaves jobs for `npm run worker`.
+    worker: readString("EMBED_WORKER", "inprocess"),
   },
 };
 

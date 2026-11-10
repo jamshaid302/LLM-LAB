@@ -1,26 +1,797 @@
 {
-  "measured": "2026-10-27",
+  "measured": "2026-10-29",
   "embedModel": "nomic-embed-text",
   "k": 3,
   "minScore": 0.5,
-  "files": ["knowledge.txt", "office.txt"],
-  "chunks": 7,
-  "recallAtK": { "before": 1, "after": 1 },
-  "mrr": { "before": 1, "after": 1 },
-  "unanswerable": 2,
-  "refusedByCutoff": 1,
-  "note": "All 11 answerable questions kept the right chunk, including the visitor wifi password in office.txt (top score 0.843). The original 10 scores were unchanged. Brazil (top score 0.394) was refused. 'Who is the CEO?' scored 0.566 and was not refused. The lowest answerable top score was 0.571 (pets on a leash), so raising the cutoff above that would drop a real answer.",
-  "answerableTopScores": [
-    { "question": "Where is the company gym?", "topScore": 0.774 },
-    { "question": "When is the company gym open?", "topScore": 0.795 },
-    { "question": "What is the server room access code?", "topScore": 0.699 },
-    { "question": "When are pets allowed in the office?", "topScore": 0.7 },
-    { "question": "How must pets be kept in common areas?", "topScore": 0.571 },
-    { "question": "When are expense reports due?", "topScore": 0.649 },
-    { "question": "What happens if an expense report is late?", "topScore": 0.611 },
-    { "question": "What does the MERN stack consist of?", "topScore": 0.7 },
-    { "question": "What is retrieval-augmented generation?", "topScore": 0.791 },
-    { "question": "What port does Ollama listen on?", "topScore": 0.705 },
-    { "question": "What is the visitor wifi password?", "topScore": 0.843 }
-  ]
+  "chunks": 101,
+  "recallAtK": {
+    "before": 1,
+    "after": 1
+  },
+  "mrr": {
+    "before": 0.915,
+    "after": 0.915
+  },
+  "unanswerable": 8,
+  "refusedByCutoff": 2,
+  "files": [
+    "cent-trading-accounts-phase1-requirements.md",
+    "genai-glossary.md",
+    "hr-leave-policy.md",
+    "it-security.md",
+    "knowledge.txt",
+    "office.txt",
+    "onboarding.md",
+    "product-lumen-faq.md",
+    "travel-expenses.md"
+  ],
+  "questions": {
+    "answerable": 49,
+    "multiChunk": 8,
+    "multiChunkSpanning": 7,
+    "unanswerable": 8
+  },
+  "lowestAnswerableTopScore": 0.571,
+  "missed": [],
+  "notRefused": [
+    {
+      "question": "Who is the CEO of the company?",
+      "topScore": 0.507
+    },
+    {
+      "question": "What is the company's stock price today?",
+      "topScore": 0.509
+    },
+    {
+      "question": "What is the dress code in the office?",
+      "topScore": 0.588
+    },
+    {
+      "question": "How much does the Lumen Enterprise plan cost?",
+      "topScore": 0.631
+    },
+    {
+      "question": "How many vacation days do contractors get?",
+      "topScore": 0.681
+    },
+    {
+      "question": "What is the wifi password for the employee network?",
+      "topScore": 0.727
+    }
+  ],
+  "reranker": "Xenova/ms-marco-MiniLM-L-6-v2",
+  "rerank": {
+    "measured": "2026-10-29",
+    "model": "Xenova/ms-marco-MiniLM-L-6-v2",
+    "candidateK": 20,
+    "k": 3,
+    "error": null,
+    "vector": {
+      "recallAfter": 0.959,
+      "mrrAfter": 0.884,
+      "refusedByCutoff": 2,
+      "missed": [
+        "When are expense reports due, and where are business trips booked?",
+        "What is the server room access code, and which extension reaches the IT service desk?"
+      ]
+    },
+    "hybrid": {
+      "recallAfter": 0.98,
+      "mrrAfter": 0.895,
+      "refusedByCutoff": 2,
+      "missed": [
+        "When are expense reports due, and where are business trips booked?"
+      ]
+    },
+    "overlap": {
+      "recallAfter": 0.898,
+      "mrrAfter": 0.796,
+      "refusedByCutoff": 2,
+      "missed": [
+        "What is QLoRA?",
+        "How long must passwords be, and after how many minutes does the laptop screen lock?",
+        "What time do new employees arrive on day one, and how long is probation?",
+        "When are expense reports due, and where are business trips booked?",
+        "What is the server room access code, and which extension reaches the IT service desk?"
+      ]
+    },
+    "crossEncoder": {
+      "recallAfter": 1,
+      "mrrAfter": 0.915,
+      "refusedByCutoff": 2,
+      "missed": []
+    },
+    "parent": {
+      "recallAfter": 0.98,
+      "mrrAfter": 0.959,
+      "refusedByCutoff": 2,
+      "missed": [
+        "When are expense reports due, and where are business trips booked?"
+      ]
+    },
+    "kept": {
+      "hybrid": true,
+      "overlap": false,
+      "crossEncoder": true,
+      "parent": true
+    }
+  },
+  "answers": {
+    "qwen2.5:7b": {
+      "measured": "2026-10-29",
+      "chatModel": "qwen2.5:7b",
+      "judgeModel": "qwen2.5:7b",
+      "reranker": "Xenova/ms-marco-MiniLM-L-6-v2",
+      "answerable": 49,
+      "labelCorrect": 1,
+      "judgeCorrect": 0.98,
+      "judgeAgreement": 0.98,
+      "falseRefusals": 0,
+      "unanswerable": 8,
+      "refused": 8,
+      "refusedByCutoff": 2,
+      "refusedAfterRetrieval": 6,
+      "answeredAnyway": [],
+      "averageMs": 23151,
+      "rows": {
+        "answerable": [
+          {
+            "question": "Where is the company gym?",
+            "facts": [
+              "3rd floor"
+            ],
+            "answer": "The company gym is located on the 3rd floor [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 24621
+          },
+          {
+            "question": "When is the company gym open?",
+            "facts": [
+              "24/7"
+            ],
+            "answer": "The company gym is open 24/7 for all employees [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 26462
+          },
+          {
+            "question": "What is the server room access code?",
+            "facts": [
+              "4829"
+            ],
+            "answer": "The server room access code is 4829 and must never be shared outside the engineering team. [1]",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 23662
+          },
+          {
+            "question": "When are pets allowed in the office?",
+            "facts": [
+              "Fridays"
+            ],
+            "answer": "Pets are allowed in the office only on Fridays, and must remain on a leash in common areas. [1]",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 25412
+          },
+          {
+            "question": "How must pets be kept in common areas?",
+            "facts": [
+              "leash"
+            ],
+            "answer": "Pets must remain on a leash in common areas [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 8788
+          },
+          {
+            "question": "When are expense reports due?",
+            "facts": [
+              "last day of each calendar month"
+            ],
+            "answer": "Expense reports must be submitted by the last day of each calendar month through the internal finance portal [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 31866
+          },
+          {
+            "question": "What happens if an expense report is late?",
+            "facts": [
+              "manager approval"
+            ],
+            "answer": "If an expense report is late, it requires manager approval [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 26566
+          },
+          {
+            "question": "What does the MERN stack consist of?",
+            "facts": [
+              "MongoDB"
+            ],
+            "answer": "The MERN stack consists of MongoDB, Express, React, and Node.js [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 17357
+          },
+          {
+            "question": "What is retrieval-augmented generation?",
+            "facts": [
+              "knowledge base"
+            ],
+            "answer": "Retrieval-Augmented Generation (RAG) is a technique where a language model's response is grounded in external documents retrieved from a knowledge base, rather than relying purely on what the model memorized during training. [1]",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 34221
+          },
+          {
+            "question": "What port does Ollama listen on?",
+            "facts": [
+              "11434"
+            ],
+            "answer": "Ollama listens on port 11434 [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 13687
+          },
+          {
+            "question": "What is the visitor wifi password?",
+            "facts": [
+              "lantern-42"
+            ],
+            "answer": "The visitor wifi password is lantern-42 [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 19738
+          },
+          {
+            "question": "How many vacation days do full-time employees get per year?",
+            "facts": [
+              "25"
+            ],
+            "answer": "Every full-time employee receives 25 vacation days per calendar year, as stated in document [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 36470
+          },
+          {
+            "question": "How many unused vacation days can be carried into the next year?",
+            "facts": [
+              "5"
+            ],
+            "answer": "According to document [1], up to 5 unused vacation days can be carried into the next year.",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 34158
+          },
+          {
+            "question": "By what date must carried-over vacation days be used?",
+            "facts": [
+              "March 31"
+            ],
+            "answer": "By March 31, according to document [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 18749
+          },
+          {
+            "question": "When is a doctor's note required for sick leave?",
+            "facts": [
+              "3"
+            ],
+            "answer": "A doctor's note is required after 3 consecutive sick days, according to document [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 24710
+          },
+          {
+            "question": "How long is parental leave for primary caregivers?",
+            "facts": [
+              "16 weeks"
+            ],
+            "answer": "Primary caregivers receive 16 weeks of fully paid parental leave [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 28840
+          },
+          {
+            "question": "How many public holidays does the company observe?",
+            "facts": [
+              "11"
+            ],
+            "answer": "The company observes 11 public holidays per year, as stated in document [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 29717
+          },
+          {
+            "question": "Where must business trips be booked?",
+            "facts": [
+              "TripDesk"
+            ],
+            "answer": "All business trips must be booked through TripDesk, the company travel portal [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 37632
+          },
+          {
+            "question": "Which flights can be booked in business class?",
+            "facts": [
+              "6 hours"
+            ],
+            "answer": "Flights of 6 hours or longer can be booked in business class, but only with written approval from a director. [1]",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 27871
+          },
+          {
+            "question": "What is the hotel limit per night in London?",
+            "facts": [
+              "260"
+            ],
+            "answer": "The hotel limit per night in London is 260 USD according to document [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 22026
+          },
+          {
+            "question": "Above what amount does an expense need an itemized receipt?",
+            "facts": [
+              "25"
+            ],
+            "answer": "An expense above 25 USD needs an itemized receipt [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 27783
+          },
+          {
+            "question": "How soon after approval are expense claims paid?",
+            "facts": [
+              "10 business days"
+            ],
+            "answer": "According to the document [1], approved expense claims are paid to your bank account within 10 business days of approval.",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 29955
+          },
+          {
+            "question": "How long must company passwords be?",
+            "facts": [
+              "14"
+            ],
+            "answer": "Company passwords must be at least 14 characters long according to document [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 12229
+          },
+          {
+            "question": "Why are text message codes not accepted for multi-factor authentication?",
+            "facts": [
+              "SIM swapping"
+            ],
+            "answer": "Text message codes are not accepted as a second factor in multi-factor authentication because they can be stolen through SIM swapping, as stated in document [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 37159
+          },
+          {
+            "question": "Which extension reaches the IT service desk?",
+            "facts": [
+              "7000"
+            ],
+            "answer": "The IT service desk can be reached on internal extension 7000 at any time of day, as mentioned in document [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 14799
+          },
+          {
+            "question": "What should I do with a suspicious email?",
+            "facts": [
+              "Report Phish"
+            ],
+            "answer": "If an email looks suspicious, click the Report Phish button in the mail client. Do not forward the email to coworkers. The security team reviews every report within one business day. [1]",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 31011
+          },
+          {
+            "question": "Which VPN must be used on hotel wifi?",
+            "facts": [
+              "NorthVPN"
+            ],
+            "answer": "NorthVPN must be used on hotel wifi according to the document [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 28208
+          },
+          {
+            "question": "What time should new employees arrive on their first day?",
+            "facts": [
+              "9:30"
+            ],
+            "answer": "According to the document [1], new employees should arrive at the reception desk at 9:30 on their first day.",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 34956
+          },
+          {
+            "question": "How long is the probation period for new employees?",
+            "facts": [
+              "90 days"
+            ],
+            "answer": "The probation period lasts 90 days [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 9180
+          },
+          {
+            "question": "How long does a new employee keep an onboarding buddy?",
+            "facts": [
+              "30 days"
+            ],
+            "answer": "Every new employee is paired with an onboarding buddy from another team for the first 30 days [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 12568
+          },
+          {
+            "question": "How much does the Lumen Pro plan cost?",
+            "facts": [
+              "8"
+            ],
+            "answer": "The Pro plan costs 8 USD per month. [1]",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 25695
+          },
+          {
+            "question": "Within how many days can a Lumen plan be refunded?",
+            "facts": [
+              "14 days"
+            ],
+            "answer": "Within 14 days of purchase, a Lumen plan can be refunded [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 19001
+          },
+          {
+            "question": "Which regions can store a Lumen workspace's data?",
+            "facts": [
+              "EU",
+              "US"
+            ],
+            "answer": "The two regions where a Lumen workspace's data can be stored are the EU (Frankfurt) and the US (Virginia) [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 14041
+          },
+          {
+            "question": "What is the Lumen API rate limit?",
+            "facts": [
+              "600"
+            ],
+            "answer": "The Lumen API rate limit is 600 requests per minute per workspace [1]. Requests above this limit will receive an HTTP 429 status code and should be retried after the time specified in the Retry-After header.",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 38222
+          },
+          {
+            "question": "About how many characters is one token in English?",
+            "facts": [
+              "four"
+            ],
+            "answer": "One token in English is about four characters, or roughly three quarters of a word. [1]",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 35910
+          },
+          {
+            "question": "What does a temperature of 0 do?",
+            "facts": [
+              "most likely"
+            ],
+            "answer": "A temperature of 0 always picks the most likely token, which suits factual answers and evaluation. [1]",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 20934
+          },
+          {
+            "question": "What is a cross-encoder?",
+            "facts": [
+              "together"
+            ],
+            "answer": "A cross-encoder reads the question and one chunk together and outputs a relevance score, which is slower but more accurate, so it is used to rerank a short list. [1]",
+            "refused": false,
+            "label": true,
+            "judge": false,
+            "agree": false,
+            "ms": 28080
+          },
+          {
+            "question": "What constant does reciprocal rank fusion add to the rank?",
+            "facts": [
+              "60"
+            ],
+            "answer": "Reciprocal rank fusion adds 1 divided by 60 plus the rank from each list [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 24604
+          },
+          {
+            "question": "What is QLoRA?",
+            "facts": [
+              "4-bit"
+            ],
+            "answer": "QLoRA trains small low-rank adapter matrices instead of all the weights, and does so on a 4-bit quantized model to save memory. [1]",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 20029
+          },
+          {
+            "question": "How many USC are credited when a client moves $100 to a cent account?",
+            "facts": [
+              "10,000 USC"
+            ],
+            "answer": "According to document [1], when a client moves $100 to a new Cent\\Standard account, 10,000 USC are credited on the trading platform.",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 16100
+          },
+          {
+            "question": "Which currency does the client wallet use in Phase 1 of cent accounts?",
+            "facts": [
+              "USD"
+            ],
+            "answer": "According to document [1], the client wallet remains USD-only in Phase 1. [1]",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 10679
+          },
+          {
+            "question": "How many vacation days and how many paid sick days do employees get?",
+            "facts": [
+              "25",
+              "10"
+            ],
+            "answer": "Every full-time employee receives 25 vacation days per calendar year and 10 paid sick days per year [1, 3].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 29920
+          },
+          {
+            "question": "What is the hotel limit in most cities, and what is the daily per diem?",
+            "facts": [
+              "180",
+              "45"
+            ],
+            "answer": "The hotel limit is 180 USD per night in most cities [1]. The daily meal allowance, or per diem, is 45 USD for each full travel day [2].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 24508
+          },
+          {
+            "question": "What floor is the gym on, and what is the visitor wifi password?",
+            "facts": [
+              "3rd floor",
+              "lantern-42"
+            ],
+            "answer": "The gym is on the 3rd floor [1]. The visitor wifi password is lantern-42 [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 29944
+          },
+          {
+            "question": "How long must passwords be, and after how many minutes does the laptop screen lock?",
+            "facts": [
+              "14",
+              "5 minutes"
+            ],
+            "answer": "According to document [3], company passwords must be at least 14 characters long. The laptop screen locks automatically after 5 minutes without input, as stated in document [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 15645
+          },
+          {
+            "question": "What is the Lumen refund window, and what uptime does the Team plan guarantee?",
+            "facts": [
+              "14",
+              "99.9"
+            ],
+            "answer": "The refund window for paid plans is 14 days from purchase [1]. The Team plan includes an uptime service level agreement (SLA) of 99.9 percent per month, and if uptime falls below that, Team customers receive a 10 percent credit on the next…",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 31445
+          },
+          {
+            "question": "What time do new employees arrive on day one, and how long is probation?",
+            "facts": [
+              "9:30",
+              "90"
+            ],
+            "answer": "New employees arrive at the reception desk at 9:30 on their first day [1]. The probation period lasts 90 days [2].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 28890
+          },
+          {
+            "question": "When are expense reports due, and where are business trips booked?",
+            "facts": [
+              "last day",
+              "TripDesk"
+            ],
+            "answer": "Expense reports are due by the last day of each calendar month and are submitted through the internal finance portal [2]. Business trips are booked through TripDesk, the company travel portal [1].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 37779
+          },
+          {
+            "question": "What is the server room access code, and which extension reaches the IT service desk?",
+            "facts": [
+              "4829",
+              "7000"
+            ],
+            "answer": "The server room access code is 4829 and must never be shared outside the engineering team [1]. The IT service desk can be reached on internal extension 7000 [2].",
+            "refused": false,
+            "label": true,
+            "judge": true,
+            "agree": true,
+            "ms": 44277
+          }
+        ],
+        "unanswerable": [
+          {
+            "question": "What is the capital of Brazil?",
+            "answer": "I don't know based on the provided documents.",
+            "refused": true,
+            "by": "cutoff",
+            "ms": 1100
+          },
+          {
+            "question": "Who is the CEO of the company?",
+            "answer": "I don't know based on the provided documents.",
+            "refused": true,
+            "by": "model or grounding check",
+            "ms": 3190
+          },
+          {
+            "question": "Who won the 2018 football World Cup?",
+            "answer": "I don't know based on the provided documents.",
+            "refused": true,
+            "by": "cutoff",
+            "ms": 811
+          },
+          {
+            "question": "What is the company's stock price today?",
+            "answer": "I don't know based on the provided documents.",
+            "refused": true,
+            "by": "model or grounding check",
+            "ms": 9732
+          },
+          {
+            "question": "What is the dress code in the office?",
+            "answer": "I don't know based on the provided documents.",
+            "refused": true,
+            "by": "model or grounding check",
+            "ms": 9093
+          },
+          {
+            "question": "How much does the Lumen Enterprise plan cost?",
+            "answer": "I don't know based on the provided documents.",
+            "refused": true,
+            "by": "model or grounding check",
+            "ms": 19918
+          },
+          {
+            "question": "How many vacation days do contractors get?",
+            "answer": "I don't know based on the provided documents.",
+            "refused": true,
+            "by": "model or grounding check",
+            "ms": 14161
+          },
+          {
+            "question": "What is the wifi password for the employee network?",
+            "answer": "I don't know based on the provided documents.",
+            "refused": true,
+            "by": "model or grounding check",
+            "ms": 15483
+          }
+        ]
+      }
+    }
+  }
 }

@@ -1,0 +1,61 @@
+name: tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+        working-directory: backend
+      - run: npm test
+        working-directory: backend
+
+  # The Mongo and Chroma paths against real servers. No Ollama: these tests use fixed vectors.
+  live:
+    runs-on: ubuntu-latest
+    services:
+      mongo:
+        image: mongo:7
+        ports:
+          - 27018:27017
+      chroma:
+        image: chromadb/chroma:1.4.1
+        ports:
+          - 8000:8000
+    env:
+      MONGO_URL: mongodb://127.0.0.1:27018/lab
+      CHROMA_URL: http://localhost:8000
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+        working-directory: backend
+      - name: Wait for Chroma
+        run: |
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:8000/api/v2/heartbeat && exit 0
+            sleep 2
+          done
+          exit 1
+      - run: npm run test:live
+        working-directory: backend
+
+  image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: docker build -t lab-api backend
+      - run: docker build -t lab-web frontend

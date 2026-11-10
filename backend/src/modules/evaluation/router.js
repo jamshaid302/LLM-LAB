@@ -1,10 +1,10 @@
 import { Router } from "express";
 
 import { HttpError, asyncHandler } from "../../core/http.js";
-import { userIdFromHeader } from "../../core/users.js";
+import { userIdFromRequest } from "../../core/users.js";
 
 function userFrom(req) {
-  const userId = userIdFromHeader(req.get("X-User-Id"));
+  const userId = userIdFromRequest(req);
   if (!userId) throw new HttpError(400, "Choose local or guest");
   return userId;
 }
@@ -16,6 +16,13 @@ export function createEvaluationRouter(service) {
     "/run",
     asyncHandler(async (req, res) => {
       res.json(await service.score(userFrom(req)));
+    }),
+  );
+
+  router.get(
+    "/baseline",
+    asyncHandler(async (_req, res) => {
+      res.json(await service.baseline());
     }),
   );
 

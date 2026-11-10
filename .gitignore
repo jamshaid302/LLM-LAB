@@ -12,6 +12,7 @@ build/
 .env.*.local
 
 # Local model / vector store data
+.cache/
 .chroma/
 chroma-data/
 *.sqlite3

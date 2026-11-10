@@ -44,13 +44,13 @@ last week?", can sit on top of MongoDB later. It does not replace it.
 ```
 New chat
    → POST /api/conversations/threads
-   → MongoDB threads          one document, userId from X-User-Id, title "New chat"
+   → MongoDB threads          one document, userId from the signed-in account, title "New chat"
 
 Send
    → save the user message
    → if the thread is longer than the last 12 messages, summarize the older ones
    → if this is a follow-up, rewrite it into one standalone search query
-   → retrieve chunks with that query and drop any below the cutoff
+   → retrieve chunks with that query (nearest 20, cross-encoder to the top 3) and drop any below the cutoff
    → copy the summary plus the original recent messages into the prompt
    → prompt                  system rules, then untrusted documents in their own message, then the transcript
    → Ollama stream           token events over SSE
@@ -83,7 +83,7 @@ turns together with the previous summary, so the early facts are not folded twic
 passes a `retrieveContext` function. The conversations folder does not import the RAG
 folder.
 
-There is one stand-in user, `local`. Real accounts wait for the security milestone.
+Threads belong to the signed-in account. One account cannot list or open another's threads.
 
 ### Frontend (`frontend/src/modules/conversations/ConversationsPage.jsx`)
 
@@ -163,13 +163,13 @@ Start the API and the frontend. Open **Conversations**.
 | Send "Where is the company gym?"           | The reply says 3rd floor, and a `knowledge.txt` source is listed                 |
 | Set `CONVERSATION_HISTORY_LIMIT=2`, restart, and send a third message | A card titled **Earlier messages summarized** appears. The first messages are still listed. A question about the first fact still works |
 | Refresh the page                           | The same thread and both answers are still there                                 |
-| Switch **Who is asking** to Guest, click **New chat**, then switch back to Local | Guest's thread is absent from Local's list. Switch to Guest and it is there again |
+| Log out, log in as Guest, click **New chat**, then log in as Local | Guest's thread is absent from Local's list. Log in as Guest and it is there again |
 | Press **Stop** during a long reply         | The partial text stays, with a Stopped line, and it is still there after refresh |
 | Stop the API and start it again            | The log says `connected, N threads`. The chat is still there                     |
 
 ## Known limitations
 
-- **A switch, not a login.** The header **Who is asking** is Local or Guest. A thread belongs to that person. The other person's list does not include it, and opening it returns 404. There is no password.
+- **Threads belong to the signed-in account.** Local and Guest are two accounts with the same powers, so you can prove the split. Guest's list does not include Local's threads, and opening someone else's thread returns 404. Passwords are `local` and `guest` until you change them. A new account works the same way. See [Accounts: Local and Guest](../../../../README.md#accounts-local-and-guest).
 - **The search rewrite is another model call.** A follow-up costs one extra completion before retrieval. `llama3.2:1b` sometimes puts the answer inside the query. The original sentence is still what the reply sees.
 - **The summary can drop a detail.** It is a model paragraph, not a lossless copy. The
   full messages are still in MongoDB if you need to check. `llama3.2:1b` often drops

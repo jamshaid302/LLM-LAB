@@ -41,6 +41,13 @@ export default function ObservabilityPage() {
             Retrieval {ms(trace.retrievalMs)}. Generation {ms(trace.generationMs)}. Tokens {trace.promptTokens ?? "—"} in
             / {trace.completionTokens ?? "—"} out.
           </p>
+          {trace.reranked !== null && trace.reranked !== undefined && (
+            <p style={styles.note}>
+              {trace.reranked
+                ? `Reranked by the cross-encoder in ${ms(trace.rerankMs)}.`
+                : `Not reranked${trace.rerankError ? `: ${trace.rerankError}` : ""}.`}
+            </p>
+          )}
           <p style={styles.note}>Kept: {names(trace.sources)}</p>
           {trace.dropped?.length > 0 && <p style={styles.note}>Dropped: {names(trace.dropped)}</p>}
           {trace.error && <p style={styles.error}>{trace.error}</p>}

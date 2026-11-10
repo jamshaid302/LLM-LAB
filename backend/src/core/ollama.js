@@ -7,6 +7,7 @@ export function createChatModel(overrides = {}) {
     baseUrl: config.ollama.baseUrl,
     model: config.ollama.chatModel,
     temperature: 0,
+    maxRetries: 1,
     ...overrides,
   });
 }
@@ -15,6 +16,7 @@ export function createEmbeddings(overrides = {}) {
   return new OllamaEmbeddings({
     baseUrl: config.ollama.baseUrl,
     model: config.ollama.embedModel,
+    maxRetries: 1,
     ...overrides,
   });
 }

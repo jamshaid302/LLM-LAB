@@ -5,9 +5,11 @@ export const USERS = [
   { id: "guest", label: "Guest" },
 ];
 
+let csrfToken = "";
+
 export function currentUser() {
   const saved = window.localStorage.getItem(KEY);
-  return USERS.some((user) => user.id === saved) ? saved : "local";
+  return typeof saved === "string" && /^[a-z][a-z0-9]{2,19}$/.test(saved) && saved !== "shared" ? saved : "local";
 }
 
 export function setCurrentUser(id) {
@@ -15,6 +17,12 @@ export function setCurrentUser(id) {
   window.dispatchEvent(new Event("lab-user"));
 }
 
+export function setCsrf(token) {
+  csrfToken = token || "";
+}
+
 export function userHeaders(extra = {}) {
-  return { ...extra, "X-User-Id": currentUser() };
+  const headers = { ...extra, "X-User-Id": currentUser() };
+  if (csrfToken) headers["X-CSRF-Token"] = csrfToken;
+  return headers;
 }

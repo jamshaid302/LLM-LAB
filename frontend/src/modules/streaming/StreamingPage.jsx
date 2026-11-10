@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 
 import { readSse } from "../../lib/sse.js";
+import { userHeaders } from "../../lib/user.js";
 
 export default function StreamingPage() {
   const [messages, setMessages] = useState([]);
@@ -36,7 +37,7 @@ export default function StreamingPage() {
     try {
       const res = await fetch("/api/streaming/chat", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: userHeaders({ "Content-Type": "application/json" }),
         body: JSON.stringify({ message }),
         signal: controller.signal,
       });
@@ -47,6 +48,7 @@ export default function StreamingPage() {
 
       await readSse(res, (event, data) => {
         if (event === "token") patchLast((last) => ({ text: last.text + data.text }));
+        if (event === "replace") patchLast(() => ({ text: data.text }));
         if (event === "error") patchLast((last) => ({ text: last.text || `Error: ${data.error}` }));
       });
     } catch (err) {

@@ -1,3 +1,4 @@
+import { redactOutput } from "../../core/redact.js";
 import { config } from "../../core/config.js";
 import { HttpError } from "../../core/http.js";
 import { streamOllamaChat } from "../../core/ollama-stream.js";
@@ -24,15 +25,19 @@ export function createStreamingService({
     const started = Date.now();
     let counts = {};
     let error = null;
+    let answer = "";
     try {
       counts =
         (await streamChat({
           messages: [{ role: "user", content: text }],
           signal,
           onToken(token) {
+            answer += token;
             write(formatSse("token", { text: token }));
           },
         })) ?? {};
+      const redacted = redactOutput(answer);
+      if (redacted !== answer) write(formatSse("replace", { text: redacted }));
       write(formatSse("done", { finish: "stop" }));
     } catch (err) {
       if (err?.name !== "AbortError") error = err.message;

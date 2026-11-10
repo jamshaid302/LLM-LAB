@@ -179,7 +179,7 @@ export function createChromaStore({
       const result = await current.query({
         queryEmbeddings: [query],
         nResults: k,
-        ...(userId ? { where: { $or: [{ owner: "shared" }, { owner: userId }] } } : {}),
+        ...(userId ? { where: ownerWhere(userId) } : {}),
       });
       const documents = result.documents?.[0] ?? [];
       const metadatas = result.metadatas?.[0] ?? [];
@@ -195,7 +195,7 @@ export function createChromaStore({
       const current = await open();
       const result = await current.get({
         include: ["documents", "metadatas"],
-        ...(userId ? { where: { $or: [{ owner: "shared" }, { owner: userId }] } } : {}),
+        ...(userId ? { where: ownerWhere(userId) } : {}),
       });
       const documents = result.documents ?? [];
       const metadatas = result.metadatas ?? [];
@@ -212,6 +212,11 @@ function sameFile(item, source, owner) {
   if (item.metadata?.source !== source) return false;
   if (!owner) return true;
   return item.metadata?.owner === owner;
+}
+
+/** Chroma filter: shared samples plus that person's own chunks. */
+export function ownerWhere(userId) {
+  return { $or: [{ owner: "shared" }, { owner: userId }] };
 }
 
 function visibleTo(owner, userId) {

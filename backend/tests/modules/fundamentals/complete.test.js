@@ -38,13 +38,14 @@ describe("createChatRunner", () => {
     expect(result.durationMs).toBe(250);
   });
 
-  it("turns an unreachable Ollama into a clear error", async () => {
+  it("turns an unreachable Ollama into a clear error after one retry", async () => {
     const fetchImpl = vi.fn(async () => {
       throw new Error("connect ECONNREFUSED");
     });
-    const { complete } = createChatRunner({ fetchImpl, baseUrl: "http://ollama.test" });
+    const { complete } = createChatRunner({ fetchImpl, baseUrl: "http://ollama.test", sleep: async () => {} });
 
     await expect(complete({ prompt: "hi" })).rejects.toThrow(/Cannot reach Ollama/);
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
   });
 });
 

@@ -19,13 +19,13 @@ Run
   → stop at 4 steps or 3 minutes
 ```
 
-`search_documents` is the Semantic Search lookup: top k, then the score cutoff, limited to the shared samples plus the person in Who is asking. An unknown tool name, or a query that is missing, is rejected and the search does not run. The model can try again until the cap.
+`search_documents` is the RAG retriever: the nearest 20, reranked by the cross-encoder to the top k, then the score cutoff, limited to the shared samples plus the signed-in account. Local and Guest have the same powers and do not see each other's uploads. An unknown tool name, or a query that is missing, is rejected and the search does not run. The model can try again until the cap.
 
 The agent model is `AGENT_MODEL`, default `qwen2.5:7b`. The chat model can stay smaller.
 
 ## How we implemented it
 
-This module does not import RAG. `backend/src/modules/index.js` passes a search function that calls `ragService.retrieve` and the cutoff.
+This module does not import RAG. `backend/src/modules/index.js` passes a search function that calls `ragService.retrieveRanked` and the cutoff, so the agent sees the same chunks the RAG page would.
 
 | File | What it does |
 | --- | --- |
@@ -43,7 +43,7 @@ This module does not import RAG. `backend/src/modules/index.js` passes a search 
 
 `POST /api/agents/run` body: `{ "task": "Where is the company gym?" }`.
 
-The JSON includes `model`, `finished`, `stopped` (`null`, `"steps"`, or `"time"`), `steps`, `maxSteps`, `argumentsValid` (`true`, `false`, or `null` when no tool was called), `answer`, and `toolCalls`. Each call has `name`, `arguments`, `valid`, and, when the search ran, `sources` as `{ source, score }`. Chunk text stays out of that list. A blank task, a task over 4000 characters, or an unknown `X-User-Id` is HTTP 400.
+The JSON includes `model`, `finished`, `stopped` (`null`, `"steps"`, or `"time"`), `steps`, `maxSteps`, `argumentsValid` (`true`, `false`, or `null` when no tool was called), `answer`, and `toolCalls`. Each call has `name`, `arguments`, `valid`, and, when the search ran, `sources` as `{ source, score }`. Chunk text stays out of that list. A blank task or a task over 4000 characters is HTTP 400. A call with no session and an unknown `X-User-Id` is HTTP 400. In the running app the session picks the account, and Guest's search does not return Local's files.
 
 ## Test plan
 
