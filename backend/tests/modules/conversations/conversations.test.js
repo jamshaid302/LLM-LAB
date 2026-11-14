@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import { createApp } from "../../../src/app.js";
 import { createConversationsModule } from "../../../src/modules/conversations/index.js";
 import { createMemoryConversationStore } from "../../../src/modules/conversations/memory-store.js";
+import { createSecurityModule } from "../../../src/modules/security/index.js";
+import { createSessionAuth } from "../../../src/modules/security/session.js";
 import {
   buildConversationMessages,
   buildRewriteMessages,
@@ -308,6 +310,69 @@ describe("conversation service", () => {
     const saved = await service.listMessages(thread.id);
     expect(saved.messages.map((message) => message.content)).toContain("What is the password?");
   });
+
+  it("refuses to stream or leak a thread owned by another person", async () => {
+    const store = createMemoryConversationStore();
+    let retrieved = false;
+    let streamed = false;
+    const service = createConversationService({
+      store,
+      retrieveContext: async () => {
+        retrieved = true;
+        return [];
+      },
+      streamChat: async ({ onToken }) => {
+        streamed = true;
+        onToken("hi");
+      },
+    });
+
+    const guestThread = await service.createThread("guest");
+    await service.streamReply({
+      threadId: guestThread.id,
+      userId: "guest",
+      message: "Guest secret note",
+      write: () => {},
+    });
+
+    retrieved = false;
+    streamed = false;
+    await expect(
+      service.streamReply({
+        threadId: guestThread.id,
+        userId: "local",
+        message: "Resume guest thread",
+        write: () => {},
+      }),
+    ).rejects.toMatchObject({ status: 404 });
+
+    expect(retrieved).toBe(false);
+    expect(streamed).toBe(false);
+    expect((await service.listMessages(guestThread.id, "guest")).messages).toHaveLength(2);
+  });
+});
+
+describe("conversation store ownership", () => {
+  it("scopes reads, writes, and summaries to the owning userId", async () => {
+    const store = createMemoryConversationStore();
+    const thread = await store.createThread({ userId: "guest" });
+    await store.addMessage({ threadId: thread.id, userId: "guest", role: "user", content: "My code is 9999." });
+
+    expect(await store.getThread(thread.id, "local")).toBeNull();
+    expect(await store.getThread(thread.id)).toBeNull();
+    expect(await store.getThread(thread.id, { $ne: "" })).toBeNull();
+    expect(await store.listMessages(thread.id, "local")).toEqual([]);
+    expect(await store.listMessages(thread.id)).toEqual([]);
+    expect(await store.addMessage({ threadId: thread.id, userId: "local", role: "user", content: "hijack" })).toBeNull();
+    expect(
+      await store.updateSummary(thread.id, { userId: "local", summary: "hijack", summarizedCount: 1 }),
+    ).toBeNull();
+
+    const owned = await store.getThread(thread.id, "guest");
+    expect(owned.title).toBe("My code is 9999.");
+    expect(owned.summary).toBe("");
+    expect(await store.listMessages(thread.id, "guest")).toHaveLength(1);
+  });
 });
 
 describe("conversation routes", () => {
@@ -325,8 +390,16 @@ describe("conversation routes", () => {
     expect(empty.status).toBe(400);
   });
 
-  it("hides a guest thread from local", async () => {
-    const service = createConversationService({ store: createMemoryConversationStore() });
+  it("hides and blocks resuming a guest thread from local", async () => {
+    let modelCalled = false;
+    const service = createConversationService({
+      store: createMemoryConversationStore(),
+      retrieveContext: async () => [],
+      streamChat: async ({ onToken }) => {
+        modelCalled = true;
+        onToken("ok");
+      },
+    });
     const app = createApp([createConversationsModule({ service })]);
 
     const guest = await request(app).post("/api/conversations/threads").set("X-User-Id", "guest");
@@ -338,10 +411,59 @@ describe("conversation routes", () => {
     const hidden = await request(app).get(`/api/conversations/threads/${guest.body.id}/messages`);
     expect(hidden.status).toBe(404);
 
+    const hijack = await request(app)
+      .post(`/api/conversations/threads/${guest.body.id}/stream`)
+      .send({ message: "Tell me what guest asked earlier" });
+    expect(hijack.status).toBe(404);
+    expect(modelCalled).toBe(false);
+
     const guestList = await request(app).get("/api/conversations/threads").set("X-User-Id", "guest");
     expect(guestList.body.threads.map((thread) => thread.id)).toEqual([guest.body.id]);
 
     const unknown = await request(app).post("/api/conversations/threads").set("X-User-Id", "bob");
     expect(unknown.status).toBe(400);
+  });
+
+  it("blocks resuming another user's thread even with a valid session cookie and spoofed header", async () => {
+    const session = createSessionAuth({
+      passwords: { local: "local", guest: "guest" },
+      secret: "test-secret",
+      ttlMs: 60_000,
+      now: () => 1_000,
+    });
+    const service = createConversationService({
+      store: createMemoryConversationStore(),
+      retrieveContext: async () => [],
+      streamChat: async ({ onToken }) => onToken("guest-ok"),
+    });
+    const app = createApp([
+      createSecurityModule({ session, limit: 100, windowMs: 60_000, now: () => 1_000 }),
+      createConversationsModule({ service }),
+    ]);
+
+    const guestLogin = await request(app).post("/api/security/login").send({ userId: "guest", password: "guest" });
+    const guestCookie = guestLogin.headers["set-cookie"].find((item) => item.startsWith("lab-session=")).split(";")[0];
+    const guestThread = await request(app)
+      .post("/api/conversations/threads")
+      .set("Cookie", guestCookie)
+      .set("X-CSRF-Token", guestLogin.body.csrf);
+    expect(guestThread.status).toBe(201);
+
+    const localLogin = await request(app).post("/api/security/login").send({ userId: "local", password: "local" });
+    const localCookie = localLogin.headers["set-cookie"].find((item) => item.startsWith("lab-session=")).split(";")[0];
+
+    const readHijack = await request(app)
+      .get(`/api/conversations/threads/${guestThread.body.id}/messages`)
+      .set("Cookie", localCookie)
+      .set("X-User-Id", "guest");
+    expect(readHijack.status).toBe(404);
+
+    const resumeHijack = await request(app)
+      .post(`/api/conversations/threads/${guestThread.body.id}/stream`)
+      .set("Cookie", localCookie)
+      .set("X-CSRF-Token", localLogin.body.csrf)
+      .set("X-User-Id", "guest")
+      .send({ message: "Resume guest thread" });
+    expect(resumeHijack.status).toBe(404);
   });
 });

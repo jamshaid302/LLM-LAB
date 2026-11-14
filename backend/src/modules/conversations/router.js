@@ -54,7 +54,7 @@ export function createConversationsRouter(service) {
     }
 
     try {
-      await service.listMessages(req.params.id, userId);
+      await (service.getThread ? service.getThread(req.params.id, userId) : service.listMessages(req.params.id, userId));
     } catch (err) {
       next(err);
       return;

@@ -347,7 +347,7 @@ later message, and the text cannot close that tag early. After the model answers
 a citation-only reply is replaced with "I don't know", and so is a name or code
 that the kept chunks do not contain. A name that the file itself states is left
 as is. This is not a lock. Emails, phone numbers, long card numbers, and API keys in a reply are replaced with a short label. A short code such as `lantern-42` or `4829` is left as written. Local and Guest are accounts, with lab passwords `local` and `guest`, and anyone can register another id of 3 to 20 letters and numbers. The session is an HttpOnly cookie plus a token on every change. Logout deletes the session. A request without that cookie is HTTP 401, and the cookie replaces a spoofed `X-User-Id` header. A new file is stored under `docs/users/<id>/`. A question searches the shared
-samples plus that person's files. The other person's threads stay hidden. Files
+samples plus that person's files. The other person's threads stay hidden, and conversation store queries scope threads, messages, and rolling summaries by `userId` so one account cannot read or resume another's thread by ID. Files
 already in the docs folder, including `knowledge.txt`, `office.txt`, and the
 cent-trading notes, stay shared. Ask, stream, and upload share one in-memory
 budget: 20 requests per 60 seconds for each signed-in account. Without a session, Local and Guest are still separate and any other header shares one count. The 21st request is HTTP 429. List, delete, retry, and

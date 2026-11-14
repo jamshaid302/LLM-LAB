@@ -32,7 +32,8 @@ services:
     ports:
       - "5001:5001"
     environment:
-      OLLAMA_BASE_URL: http://host.docker.internal:11434
+      OLLAMA_BASE_URL: http://host.docker.internal:11434  // That configuration assumes Ollama is running directly on your Machine(MAC/Windows) and not in a container.
+      # OLLAMA_BASE_URL: http://ollama:11434
       CHAT_MODEL: ${CHAT_MODEL:-qwen2.5:7b}
       AGENT_MODEL: ${AGENT_MODEL:-qwen2.5:7b}
       EMBED_MODEL: ${EMBED_MODEL:-nomic-embed-text}
@@ -57,7 +58,17 @@ services:
     depends_on:
       - api
 
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: ollama
+  #   ports:
+  #     - "11434:11434"
+  #   volumes:
+  #     - ./ollama-data:/root/.ollama
+  #   restart: unless-stopped
+
 volumes:
   chroma-data:
   mongo-data:
   model-cache:
+  # ollama_data:

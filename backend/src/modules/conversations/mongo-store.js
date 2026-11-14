@@ -1,6 +1,7 @@
 import { MongoClient, ObjectId } from "mongodb";
 
 import { config } from "../../core/config.js";
+import { hasOwner } from "../../utils/generals.js";
 
 export function createMongoConversationStore(db) {
   const threads = db.collection("threads");
@@ -9,13 +10,31 @@ export function createMongoConversationStore(db) {
   return {
     async ensureIndexes() {
       await threads.createIndex({ userId: 1, updatedAt: -1 });
-      await messages.createIndex({ threadId: 1, createdAt: 1 });
+      await messages.createIndex({ threadId: 1, userId: 1, createdAt: 1 });
+
+      const legacy = await messages.findOne(
+        { userId: { $exists: false } },
+        { projection: { _id: 1 } },
+      );
+
+      if (legacy) {
+        const owners = await threads
+          .find({}, { projection: { _id: 1, userId: 1 } })
+          .toArray();
+        for (const thread of owners) {
+          await messages.updateMany(
+            { threadId: thread._id.toString(), userId: { $exists: false } },
+            { $set: { userId: thread.userId } },
+          );
+        }
+      }
     },
 
     async createThread({ userId, title = "New chat" }) {
+      const owner = requireOwner(userId);
       const now = new Date();
       const result = await threads.insertOne({
-        userId,
+        userId: owner,
         title,
         summary: "",
         summarizedCount: 0,
@@ -24,7 +43,7 @@ export function createMongoConversationStore(db) {
       });
       return presentThread({
         _id: result.insertedId,
-        userId,
+        userId: owner,
         title,
         summary: "",
         summarizedCount: 0,
@@ -34,30 +53,44 @@ export function createMongoConversationStore(db) {
     },
 
     async listThreads(userId) {
-      const docs = await threads.find({ userId }).sort({ updatedAt: -1 }).toArray();
+      if (!hasOwner(userId)) return [];
+
+      const docs = await threads
+        .find({ userId })
+        .sort({ updatedAt: -1 })
+        .toArray();
       return docs.map(presentThread);
     },
 
-    async getThread(id) {
+    async getThread(id, userId) {
       const _id = asObjectId(id);
-      if (!_id) return null;
-      const doc = await threads.findOne({ _id });
+      if (!_id || !hasOwner(userId)) return null;
+      const doc = await threads.findOne({ _id, userId });
       return doc ? presentThread(doc) : null;
     },
 
-    async addMessage({ threadId, role, content, stopped = false }) {
-      const thread = await this.getThread(threadId);
+    async addMessage({ threadId, userId, role, content, stopped = false }) {
+      if (!hasOwner(userId)) return null;
+
+      const thread = await this.getThread(threadId, userId);
       if (!thread) return null;
       const now = new Date();
       const result = await messages.insertOne({
         threadId,
+        userId,
         role,
         content,
         stopped,
         createdAt: now,
       });
-      const title = role === "user" && thread.title === "New chat" ? content.slice(0, 48) : thread.title;
-      await threads.updateOne({ _id: new ObjectId(threadId) }, { $set: { updatedAt: now, title } });
+      const title =
+        role === "user" && thread.title === "New chat"
+          ? content.slice(0, 48)
+          : thread.title;
+      await threads.updateOne(
+        { _id: new ObjectId(threadId), userId },
+        { $set: { updatedAt: now, title } },
+      );
       return {
         id: result.insertedId.toString(),
         threadId,
@@ -68,20 +101,26 @@ export function createMongoConversationStore(db) {
       };
     },
 
-    async updateSummary(threadId, { summary, summarizedCount }) {
+    async updateSummary(threadId, { userId, summary, summarizedCount }) {
       const _id = asObjectId(threadId);
-      if (!_id) return null;
+      if (!_id || !hasOwner(userId)) return null;
       const now = new Date();
       const updated = await threads.findOneAndUpdate(
-        { _id },
+        { _id, userId },
         { $set: { summary, summarizedCount, updatedAt: now } },
         { returnDocument: "after" },
       );
       return updated ? presentThread(updated) : null;
     },
 
-    async listMessages(threadId) {
-      const docs = await messages.find({ threadId }).sort({ createdAt: 1, _id: 1 }).toArray();
+    async listMessages(threadId, userId) {
+      if (typeof threadId !== "string" || !threadId || !hasOwner(userId))
+        return [];
+
+      const docs = await messages
+        .find({ threadId, userId })
+        .sort({ createdAt: 1, _id: 1 })
+        .toArray();
       return docs.map((doc) => ({
         id: doc._id.toString(),
         threadId: doc.threadId,
@@ -101,6 +140,12 @@ export async function connectMongo({ url = config.mongo.url } = {}) {
   const store = createMongoConversationStore(client.db(dbName));
   await store.ensureIndexes();
   return store;
+}
+
+function requireOwner(userId) {
+  if (!hasOwner(userId))
+    throw new Error("Conversation store requires a non-empty userId");
+  return userId;
 }
 
 function asObjectId(id) {

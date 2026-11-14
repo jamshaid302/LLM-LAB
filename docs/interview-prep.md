@@ -364,7 +364,7 @@ into the same Chroma collection as the knowledge base would let an old reply com
 with the gym chunk. The last 12 messages are sent in full. Older ones are summarized
 into one paragraph, and that paragraph is what later prompts see for the early turns.
 The summary is its own model call, so it costs tokens, and it can drop a detail. The
-original messages stay in MongoDB. Log in with an account. Local and Guest start as `local` and `guest`. A thread belongs to that account, and another account's list does not include it.
+original messages stay in MongoDB. Log in with an account. Local and Guest start as `local` and `guest`. A thread and its messages belong to that account: `userId` ownership is enforced in both the service layer and every MongoDB query, so another account cannot list, read, or resume a thread by its ID.
 
 ---
 

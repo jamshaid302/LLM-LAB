@@ -2,7 +2,10 @@ import { redactOutput } from "../../core/redact.js";
 import { stripFenceMarkup } from "../../core/untrusted.js";
 import { config } from "../../core/config.js";
 import { HttpError } from "../../core/http.js";
-import { completeOllamaChat, streamOllamaChat } from "../../core/ollama-stream.js";
+import {
+  completeOllamaChat,
+  streamOllamaChat,
+} from "../../core/ollama-stream.js";
 import { formatSse, isAbortError } from "../../core/sse.js";
 
 import {
@@ -40,7 +43,10 @@ export function createConversationService({
   function requireStore() {
     const current = getStore ? getStore() : store;
     if (!current) {
-      throw new HttpError(503, "MongoDB is not connected. From backend/, run: docker compose up -d");
+      throw new HttpError(
+        503,
+        "MongoDB is not connected. From backend/, run: docker compose up -d",
+      );
     }
     return current;
   }
@@ -53,29 +59,53 @@ export function createConversationService({
     return requireStore().listThreads(actor);
   }
 
+  async function getThread(threadId, actor = userId) {
+    const db = requireStore();
+    const thread = await db.getThread(threadId, actor);
+    if (!thread || thread.userId !== actor)
+      throw new HttpError(404, "Thread not found");
+    return thread;
+  }
+
   async function listMessages(threadId, actor = userId) {
-    const thread = await requireStore().getThread(threadId);
-    if (!thread || thread.userId !== actor) throw new HttpError(404, "Thread not found");
+    const db = requireStore();
+    const thread = await getThread(threadId, actor);
     return {
-      messages: await requireStore().listMessages(threadId),
+      messages: await db.listMessages(threadId, actor),
       summary: thread.summary ?? "",
       summarizedCount: thread.summarizedCount ?? 0,
     };
   }
 
-  async function streamReply({ threadId, message, signal, write, userId: actor = userId }) {
+  async function streamReply({
+    threadId,
+    message,
+    signal,
+    write,
+    userId: actor = userId,
+  }) {
     const text = typeof message === "string" ? message.trim() : "";
     if (!text) throw new HttpError(400, "Missing 'message'");
     if (text.length > MAX_MESSAGE) {
-      throw new HttpError(400, `Message must be at most ${MAX_MESSAGE} characters`);
+      throw new HttpError(
+        400,
+        `Message must be at most ${MAX_MESSAGE} characters`,
+      );
     }
 
     const db = requireStore();
-    const thread = await db.getThread(threadId);
-    if (!thread || thread.userId !== actor) throw new HttpError(404, "Thread not found");
+    const thread = await getThread(threadId, actor);
 
-    await db.addMessage({ threadId, role: "user", content: text });
-    const history = await prepareHistory({ db, thread, threadId });
+    const added = await db.addMessage({
+      threadId,
+      userId: actor,
+      role: "user",
+      content: text,
+    });
+
+    if (!added) throw new HttpError(404, "Thread not found");
+
+    const history = await prepareHistory({ db, thread, threadId, actor });
     const searchQuery = searchAsWritten(text)
       ? text
       : await rewriteSearchQuery({
@@ -153,8 +183,15 @@ export function createConversationService({
 
     if (answer) {
       const redacted = redactOutput(stripFenceMarkup(answer));
-      if (redacted !== answer.trim()) write(formatSse("replace", { text: redacted }));
-      await db.addMessage({ threadId, role: "assistant", content: redacted, stopped });
+      if (redacted !== answer.trim())
+        write(formatSse("replace", { text: redacted }));
+      await db.addMessage({
+        threadId,
+        userId: actor,
+        role: "assistant",
+        content: redacted,
+        stopped,
+      });
     }
     write(formatSse("done", { finish: stopped ? "stopped" : "stop" }));
   }
@@ -164,14 +201,16 @@ export function createConversationService({
     if (earlier.length === 0 && !summary) return question;
 
     const rewritten = searchQueryFromRewrite(
-      await completeChat(buildRewriteMessages({ summary, messages: earlier, question })),
+      await completeChat(
+        buildRewriteMessages({ summary, messages: earlier, question }),
+      ),
       question,
     );
     return rewritten;
   }
 
-  async function prepareHistory({ db, thread, threadId }) {
-    const messages = await db.listMessages(threadId);
+  async function prepareHistory({ db, thread, threadId, actor }) {
+    const messages = await db.listMessages(threadId, actor);
     const fold = chooseFold({
       messages,
       summarizedCount: thread.summarizedCount ?? 0,
@@ -186,15 +225,28 @@ export function createConversationService({
       };
     }
 
-    const summary = (await completeChat(buildSummaryMessages({
-      previousSummary: thread.summary ?? "",
-      messages: fold.toFold,
-    }))).trim();
+    const summary = (
+      await completeChat(
+        buildSummaryMessages({
+          previousSummary: thread.summary ?? "",
+          messages: fold.toFold,
+        }),
+      )
+    ).trim();
     if (!summary) throw new Error("The conversation summary came back empty");
 
-    await db.updateSummary(threadId, { summary, summarizedCount: fold.summarizedCount });
-    return { recent: fold.recent, summary, summarizedCount: fold.summarizedCount };
+    const updated = await db.updateSummary(threadId, {
+      userId: actor,
+      summary,
+      summarizedCount: fold.summarizedCount,
+    });
+    if (!updated) throw new HttpError(404, "Thread not found");
+    return {
+      recent: fold.recent,
+      summary,
+      summarizedCount: fold.summarizedCount,
+    };
   }
 
-  return { createThread, listThreads, listMessages, streamReply };
+  return { createThread, getThread, listThreads, listMessages, streamReply };
 }

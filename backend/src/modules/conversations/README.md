@@ -87,7 +87,7 @@ turns together with the previous summary, so the early facts are not folded twic
 passes a `retrieveContext` function. The conversations folder does not import the RAG
 folder.
 
-Threads belong to the signed-in account. One account cannot list or open another's threads.
+Threads and messages belong to the signed-in account. `userId` ownership is enforced at both the service layer and inside every `mongo-store.js` and `memory-store.js` query (`threads` and `messages` collections both store and filter by `userId`), so one account cannot list, read, summarize, or resume another's thread by ID.
 
 ### Frontend (`frontend/src/modules/conversations/ConversationsPage.jsx`)
 
@@ -145,7 +145,8 @@ None of these need MongoDB or Ollama.
 
 | File                                                | What it checks                                                                                                                                                                                                                                                           |
 | --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `tests/modules/conversations/conversations.test.js` | The history window starts on a user message. The prompt contains both the saved transcript and a retrieved chunk. A second reply is prompted with the first saved answer. A follow-up is searched with the rewritten query, and the original sentence stays in the transcript. Past the limit, older messages are summarized once and left out of the next transcript. A later overflow folds new turns into the existing summary and does not repeat the original lines. A stopped stream saves the partial text. An unknown thread is 404 and an empty message is 400. |
+| `tests/modules/conversations/conversations.test.js` | The history window starts on a user message. The prompt contains both the saved transcript and a retrieved chunk. A second reply is prompted with the first saved answer. A follow-up is searched with the rewritten query, and the original sentence stays in the transcript. Past the limit, older messages are summarized once and left out of the next transcript. A later overflow folds new turns into the existing summary and does not repeat the original lines. A stopped stream saves the partial text. An unknown thread is 404 and an empty message is 400. Store-level, service-level, route-level, and session-auth isolation block reading or resuming another user's thread by ID. |
+| `tests/live/mongo-conversations.live.test.js` (`npm run test:live`) | Against the real MongoDB: threads, messages, and rolling summaries are scoped by `userId` in database queries, cross-tenant operations are rejected, and legacy messages without `userId` are backfilled on startup. |
 
 ### Manual tests
 
