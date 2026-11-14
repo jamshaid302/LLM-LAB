@@ -1,0 +1,91 @@
+Colima + Docker + Ollama: Quick Start (Mac Intel / Ventura)
+============================================================
+
+1. One-Time Setup (Already Completed):
+   a. Install CLI tools:
+      brew install colima docker docker-compose
+   b. Setup Ollama macOS Background Service:
+      mkdir -p ~/Library/LaunchAgents
+      cat << 'EOF' > ~/Library/LaunchAgents/com.ollama.ollama.plist
+      <?xml version="1.0" encoding="UTF-8"?>
+      <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+      <plist version="1.0">
+      <dict>
+          <key>Label</key>
+          <string>com.ollama.ollama</string>
+          <key>ProgramArguments</key>
+          <array>
+              <string>/usr/local/bin/ollama</string>
+              <string>serve</string>
+          </array>
+          <key>RunAtLoad</key>
+          <true/>
+          <key>KeepAlive</key>
+          <true/>
+          <key>StandardOutPath</key>
+          <string>/tmp/ollama.log</string>
+          <key>StandardErrorPath</key>
+          <string>/tmp/ollama.err.log</string>
+      </dict>
+      </plist>
+      EOF
+      launchctl load -w ~/Library/LaunchAgents/com.ollama.ollama.plist
+   c. Verify models:
+      ollama list
+      # Should show: llama3.2:1b and nomic-embed-text:latest
+
+2. Start Colima (Lightweight - 2 CPU / 2 GB RAM):
+   colima start --cpu 2 --memory 2 --disk 60
+   (Since Ollama runs natively on macOS, Colima only runs Chroma + Mongo, saving 4+ GB RAM)
+
+3. Start Database Containers:
+   cd /Users/mrcom/Personal/projects/mern-rag-chatbot/backend
+   docker compose up -d
+
+4. Start Backend API:
+   npm run dev
+
+5. Start Frontend UI (in another terminal tab):
+   cd /Users/mrcom/Personal/projects/mern-rag-chatbot/frontend
+   npm run dev
+   # Open http://localhost:5173
+
+6. Check Logs / Container Status:
+   docker compose ps
+   docker compose logs -f
+
+7. Stop the Project:
+   a. Press Ctrl+C in backend and frontend terminals.
+   b. Stop containers:
+      cd /Users/mrcom/Personal/projects/mern-rag-chatbot/backend
+      docker compose down
+   c. Stop Colima when finished:
+      colima stop
+
+------------------------------------------------------------
+Next Time (Daily Workflow):
+------------------------------------------------------------
+* Ollama starts automatically in the background on Mac boot!
+1. colima start
+2. cd /Users/mrcom/Personal/projects/mern-rag-chatbot/backend
+   docker compose up -d
+   npm run dev
+3. cd /Users/mrcom/Personal/projects/mern-rag-chatbot/frontend
+   npm run dev
+
+------------------------------------------------------------
+Helpful Ollama Background Commands:
+------------------------------------------------------------
+- Check if Ollama is running:
+  ollama list
+- Stop Ollama background service (free all RAM):
+  launchctl unload ~/Library/LaunchAgents/com.ollama.ollama.plist
+- Start Ollama background service again:
+  launchctl load -w ~/Library/LaunchAgents/com.ollama.ollama.plist
+
+------------------------------------------------------------
+Important:
+------------------------------------------------------------
+- `docker compose down` does not delete named volumes (data is safe).
+- Avoid `docker compose down -v` unless you want to delete stored chat and vector data.
+- `colima delete` deletes the Colima VM; do not use it for normal shutdown.
